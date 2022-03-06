@@ -1,96 +1,96 @@
 #include <stdio.h>
 
-// require T % 4 == 0 and T <= 1024
+// require T % 4 == 0 and T <= Tmax (passed by compiler)
+
+#define F4(A, B) ((float4 *)(A))[(B) >> 2]
 
 template <typename F>
-__global__ void kernel_forward(const F *__restrict__ const w, const F *__restrict__ const k, F *__restrict__ const x,
+__global__ void kernel_forward(const F *__restrict__ const __w, const F *__restrict__ const __k, F *__restrict__ const x,
                                const F eps, const int B, const int C, const int T) {
     const int i = blockIdx.y;
-    const int tt = threadIdx.x;
-    const int t = tt << 2;
+    const int t = threadIdx.x << 2;
 
-    __shared__ F wk[2048];
-    ((float4 *)wk)[tt] = ((float4 *)w)[(i % C) * (T >> 2) + tt];
-    ((float4 *)wk)[256 + tt] = ((float4 *)k)[i * (T >> 2) + tt];
+    __shared__ F ww[Tmax];
+    __shared__ F k[Tmax];
+    F4(ww, t) = F4(__w, t + T * (i % C));
+    F4(k, t) = F4(__k, t + T * i);
     __syncthreads();
 
     float4 s = {eps, eps, eps, eps};
 
-    const F *__restrict__ const ww = wk + T - t - 4;
-    const F *__restrict__ const kk = wk + 1024;
+    const F *__restrict__ const w = ww + T - t - 4;
     for (int u = 0; u <= t; u++) {
-        F x = kk[u];
-        s.x += ww[u + 3] * x;
-        s.y += ww[u + 2] * x;
-        s.z += ww[u + 1] * x;
-        s.w += ww[u + 0] * x;
+        F x = k[u];
+        s.x += w[u + 3] * x;
+        s.y += w[u + 2] * x;
+        s.z += w[u + 1] * x;
+        s.w += w[u + 0] * x;
     }
-    s.y += ww[t + 3] * kk[t + 1];
-    s.z += ww[t + 2] * kk[t + 1];
-    s.z += ww[t + 3] * kk[t + 2];
-    s.w += ww[t + 1] * kk[t + 1];
-    s.w += ww[t + 2] * kk[t + 2];
-    s.w += ww[t + 3] * kk[t + 3];
+    s.y += w[t + 3] * k[t + 1];
+    s.z += w[t + 2] * k[t + 1];
+    s.z += w[t + 3] * k[t + 2];
+    s.w += w[t + 1] * k[t + 1];
+    s.w += w[t + 2] * k[t + 2];
+    s.w += w[t + 3] * k[t + 3];
 
-    ((float4 *)x)[i * (T >> 2) + tt] = s;
+    F4(x, t + T * i) = s;
 }
 
 template <typename F>
-__global__ void kernel_backward(const F *__restrict__ const w, const F *__restrict__ const k, const F *__restrict__ const gwk,
+__global__ void kernel_backward(const F *__restrict__ const __w, const F *__restrict__ const __k, const F *__restrict__ const __gwk,
                                 F *__restrict__ const gw, F *__restrict__ const gk,
                                 const int B, const int C, const int T) {
     const int i = blockIdx.y;
-    const int tt = threadIdx.x;
-    const int t = tt << 2;
+    const int t = threadIdx.x << 2;
 
-    __shared__ F ww[1024];
-    __shared__ F kk[1024];
-    __shared__ F gg[1024];
-    ((float4 *)ww)[tt] = ((float4 *)w)[(i % C) * (T >> 2) + tt];
-    ((float4 *)kk)[tt] = ((float4 *)k)[i * (T >> 2) + tt];
-    ((float4 *)gg)[tt] = ((float4 *)gwk)[i * (T >> 2) + tt];
+    __shared__ F w[Tmax];
+    __shared__ F k[Tmax];
+    __shared__ F gg[Tmax];
+    F4(w, t) = F4(__w, t + T * (i % C));
+    F4(k, t) = F4(__k, t + T * i);
+    F4(gg, t) = F4(__gwk, t + T * i);
     __syncthreads();
 
     float4 s = {0, 0, 0, 0};
-    const F *__restrict__ const ggk = gg + T - t - 4;
+    const F *__restrict__ const ga = gg + T - t - 4;
 
     for (int u = 0; u <= t; u++) {
-        F x = kk[u];
-        s.x += ggk[u + 3] * x;
-        s.y += ggk[u + 2] * x;
-        s.z += ggk[u + 1] * x;
-        s.w += ggk[u] * x;
+        F x = k[u];
+        s.x += ga[u + 3] * x;
+        s.y += ga[u + 2] * x;
+        s.z += ga[u + 1] * x;
+        s.w += ga[u] * x;
     }
-    s.y += ggk[t + 3] * kk[t + 1];
-    s.z += ggk[t + 2] * kk[t + 1];
-    s.z += ggk[t + 3] * kk[t + 2];
-    s.w += ggk[t + 1] * kk[t + 1];
-    s.w += ggk[t + 2] * kk[t + 2];
-    s.w += ggk[t + 3] * kk[t + 3];
+    s.y += ga[t + 3] * k[t + 1];
+    s.z += ga[t + 2] * k[t + 1];
+    s.z += ga[t + 3] * k[t + 2];
+    s.w += ga[t + 1] * k[t + 1];
+    s.w += ga[t + 2] * k[t + 2];
+    s.w += ga[t + 3] * k[t + 3];
 
-    ((float4 *)gw)[i * (T >> 2) + tt] = s;
+    F4(gw, t + T * i) = s;
 
     s.x = 0;
     s.y = 0;
     s.z = 0;
     s.w = 0;
-    const F *__restrict__ const ggw = gg + T + t - 3;
+    const F *__restrict__ const gb = gg + T + t - 3;
 
     for (int u = t + 3; u < T; u++) {
-        F x = ww[u];
-        s.x += ggw[2 - u] * x;
-        s.y += ggw[3 - u] * x;
-        s.z += ggw[4 - u] * x;
-        s.w += ggw[5 - u] * x;
+        F x = w[u];
+        s.x += gb[2 - u] * x;
+        s.y += gb[3 - u] * x;
+        s.z += gb[4 - u] * x;
+        s.w += gb[5 - u] * x;
     }
-    s.x += ggw[2 - t] * ww[t + 0];
-    s.x += ggw[1 - t] * ww[t + 1];
-    s.x += ggw[0 - t] * ww[t + 2];
-    s.y += ggw[2 - t] * ww[t + 1];
-    s.y += ggw[1 - t] * ww[t + 2];
-    s.z += ggw[2 - t] * ww[t + 2];
+    s.x += gb[2 - t] * w[t + 0];
+    s.x += gb[1 - t] * w[t + 1];
+    s.x += gb[0 - t] * w[t + 2];
+    s.y += gb[2 - t] * w[t + 1];
+    s.y += gb[1 - t] * w[t + 2];
+    s.z += gb[2 - t] * w[t + 2];
 
-    ((float4 *)gk)[i * (T >> 2) + tt] = s;
+    F4(gk, t + T * i) = s;
 }
 
 void cuda_forward(const float *w, const float *k, float *x, float eps, int B, int C, int T) {

@@ -12,10 +12,10 @@ torch.backends.cuda.matmul.allow_tf32 = False
 ######################################################################################################
 # From https://github.com/BlinkDL/RWKV-CUDA
 # On GTX1070 mobile:
-# pytorch = fwd 94ms bwd 534ms
+# pytorch = fwd 94ms bwd 529ms
 # CUDA kernel v0 = fwd 45ms bwd 84ms (simple)
-# CUDA kernel v1 = fwd 17ms bwd 45ms (shared memory)
-# CUDA kernel v2 = fwd 14ms bwd 31ms (float4)
+# CUDA kernel v1 = fwd 17ms bwd 43ms (shared memory)
+# CUDA kernel v2 = fwd 13ms bwd 31ms (float4)
 ######################################################################################################
 
 CUDA_KERNEL_VERSION = 2  # CUDA kernel version = 0,1,2
@@ -63,21 +63,23 @@ def RUN_PYTORCH(w, k, B, C, T, eps):
 # Load the CUDA kernel
 ######################################################################################################
 
+T_MAX = 768
+
 timex_cuda = load(name="timex", sources=["cuda/timex_op.cpp", "cuda/timex_cuda_v" + str(CUDA_KERNEL_VERSION) + ".cu"],
-                  verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization'], extra_cflags=['/wd4624'])
+                  verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}'], extra_cflags=['/wd4624'])
 
 
 # we call it the "TimeX" operator because it's used for time-mixing in my RWKV language model
 class TimeX(torch.autograd.Function):
     @staticmethod
     def forward(ctx, w, k, B, C, T, eps):
-        assert T % 4 == 0 and T <= 1024, "require T % 4 == 0 and T <= 1024"
-        w = w.contiguous()
-        k = k.contiguous()
-        ctx.save_for_backward(w, k)
         ctx.B = B
         ctx.C = C
         ctx.T = T
+        assert ctx.T % 4 == 0 and ctx.T <= T_MAX, "require T % 4 == 0 and T <= T_MAX"
+        w = w.contiguous()
+        k = k.contiguous()
+        ctx.save_for_backward(w, k)
         wk = torch.empty((B, C, T), device='cuda',
                          memory_format=torch.contiguous_format)
         timex_cuda.forward(w, k, wk, eps, B, C, T)
@@ -85,7 +87,7 @@ class TimeX(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, gwk):
-        assert ctx.T % 4 == 0 and ctx.T <= 1024, "require T % 4 == 0 and T <= 1024"
+        assert ctx.T % 4 == 0 and ctx.T <= T_MAX, "require T % 4 == 0 and T <= T_MAX"
         w, k = ctx.saved_tensors
         gw = torch.empty((ctx.B, ctx.C, ctx.T), device='cuda',
                          memory_format=torch.contiguous_format)
@@ -93,7 +95,7 @@ class TimeX(torch.autograd.Function):
                          memory_format=torch.contiguous_format)
         timex_cuda.backward(w, k, gwk.contiguous(), gw,
                             gk, ctx.B, ctx.C, ctx.T)
-        return (gw.sum(dim=0), gk, None, None, None, None)
+        return (gw.sum(dim=0), gk, None, None, None, None) # actually pytorch will do gw.sum(dim=0) but we will do it anyway just to be safe
 
 
 def RUN_CUDA(w, k, B, C, T, eps):
@@ -150,7 +152,8 @@ def CHECK_CUDA(silent=False):
 
     # check backward
 
-    loss1 = ((r1 * r1) - torch.tanh(r1)).sum() # a strange loss for better verification
+    # a strange loss for better verification
+    loss1 = ((r1 * r1) - torch.tanh(r1)).sum()
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
         loss1.backward()
     if not silent:

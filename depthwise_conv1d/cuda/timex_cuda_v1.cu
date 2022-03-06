@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-// require T <= 1024
+// require T <= Tmax
 
 template <typename F>
 __global__ void kernel_forward(const F *__restrict__ const w, const F *__restrict__ const k, F *__restrict__ const x,
@@ -9,8 +9,8 @@ __global__ void kernel_forward(const F *__restrict__ const w, const F *__restric
     const int i = blockIdx.y;
     const int t = threadIdx.x;
 
-    __shared__ F ww[1024];
-    __shared__ F kk[1024];
+    __shared__ F ww[Tmax];
+    __shared__ F kk[Tmax];
     ww[t] = w[(i % C) * T + t];
     kk[t] = k[i * T + t];
 
@@ -33,9 +33,9 @@ __global__ void kernel_backward(const F *__restrict__ const w, const F *__restri
     const int i = blockIdx.y;
     const int t = threadIdx.x;
 
-    __shared__ F gg[1024];
-    __shared__ F kk[1024];
-    __shared__ F ww[1024];
+    __shared__ F gg[Tmax];
+    __shared__ F kk[Tmax];
+    __shared__ F ww[Tmax];
     gg[t] = gwk[i * T + t];
     kk[t] = k[i * T + t];
     ww[t] = w[(i % C) * T + t];
