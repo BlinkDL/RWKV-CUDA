@@ -1,7 +1,7 @@
 # RWKV-CUDA
 The CUDA version of the RWKV language model ( https://github.com/BlinkDL/RWKV-LM )
 
-## Experiment 1 - depthwise_conv1d
+## Experiment 1 - depthwise_conv1d - 20x faster than pytorch
 
 The formula:
 ```
