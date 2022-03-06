@@ -21,4 +21,10 @@ CUDA kernel v2 = fwd 13ms bwd 31ms (float4)
 
 CUDA kernel v3 = fwd 3.4ms bwd 23ms (B-group)
 
+More test on RTX3090:
+
+pytorch = fwd 14ms bwd 65ms
+
+CUDA kernel v3 = fwd 0.8ms bwd 5.5ms
+
 How to use: ```python run.py``` and it will compile everything for you (```pip install Ninja``` if you don't have it).
