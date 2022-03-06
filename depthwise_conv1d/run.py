@@ -16,9 +16,10 @@ torch.backends.cuda.matmul.allow_tf32 = False
 # CUDA kernel v0 = fwd 45ms bwd 84ms (simple)
 # CUDA kernel v1 = fwd 17ms bwd 43ms (shared memory)
 # CUDA kernel v2 = fwd 13ms bwd 31ms (float4)
+# CUDA kernel v3 = fwd 3.4ms bwd 23ms (B-group)
 ######################################################################################################
 
-CUDA_KERNEL_VERSION = 2  # CUDA kernel version = 0,1,2
+CUDA_KERNEL_VERSION = 3  # CUDA kernel version = 0,1,2
 
 
 def set_seed(seed):
@@ -64,9 +65,11 @@ def RUN_PYTORCH(w, k, B, C, T, eps):
 ######################################################################################################
 
 T_MAX = 768
+B_GROUP_FORWARD = 8
+B_GROUP_BACKWARD = 2
 
 timex_cuda = load(name="timex", sources=["cuda/timex_op.cpp", "cuda/timex_cuda_v" + str(CUDA_KERNEL_VERSION) + ".cu"],
-                  verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}'], extra_cflags=['/wd4624'])
+                  verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}', f'-DBF={B_GROUP_FORWARD}', f'-DBB={B_GROUP_BACKWARD}'], extra_cflags=['/wd4624'])
 
 
 # we call it the "TimeX" operator because it's used for time-mixing in my RWKV language model
@@ -76,7 +79,7 @@ class TimeX(torch.autograd.Function):
         ctx.B = B
         ctx.C = C
         ctx.T = T
-        assert ctx.T % 4 == 0 and ctx.T <= T_MAX, "require T % 4 == 0 and T <= T_MAX"
+        assert ctx.T % 4 == 0 and ctx.T <= T_MAX and ctx.B % B_GROUP_FORWARD == 0 and ctx.B % B_GROUP_BACKWARD == 0, "require T % 4 == 0 and T <= T_MAX and B % B_GROUP_* == 0"
         w = w.contiguous()
         k = k.contiguous()
         ctx.save_for_backward(w, k)
@@ -87,7 +90,7 @@ class TimeX(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, gwk):
-        assert ctx.T % 4 == 0 and ctx.T <= T_MAX, "require T % 4 == 0 and T <= T_MAX"
+        assert ctx.T % 4 == 0 and ctx.T <= T_MAX and ctx.B % B_GROUP_FORWARD == 0 and ctx.B % B_GROUP_BACKWARD == 0, "require T % 4 == 0 and T <= T_MAX and B % B_GROUP_* == 0"
         w, k = ctx.saved_tensors
         gw = torch.empty((ctx.B, ctx.C, ctx.T), device='cuda',
                          memory_format=torch.contiguous_format)
@@ -95,7 +98,8 @@ class TimeX(torch.autograd.Function):
                          memory_format=torch.contiguous_format)
         timex_cuda.backward(w, k, gwk.contiguous(), gw,
                             gk, ctx.B, ctx.C, ctx.T)
-        return (gw.sum(dim=0), gk, None, None, None, None) # actually pytorch will do gw.sum(dim=0) but we will do it anyway just to be safe
+        # actually pytorch will do gw.sum(dim=0) but we will do it anyway just to be safe
+        return (gw.sum(dim=0), gk, None, None, None, None)
 
 
 def RUN_CUDA(w, k, B, C, T, eps):
