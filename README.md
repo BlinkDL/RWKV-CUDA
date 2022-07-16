@@ -1,6 +1,12 @@
 # RWKV-CUDA
 The CUDA version of the RWKV language model ( https://github.com/BlinkDL/RWKV-LM )
 
+## Towards RWKV-4 (see the wkv folder)
+
+I have a basic RWKV-4 kernel in the wkv folder. Let's optimize it.
+
+<img src="https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v3-plan.png">
+
 ## Experiment 1 - depthwise_conv1d - 20x faster than pytorch
 
 The formula:
