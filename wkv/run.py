@@ -83,7 +83,7 @@ def RUN_PYTORCH(B, T, C, w, u, k, v, time_curve):
 ######################################################################################################
 
 from torch.utils.cpp_extension import load
-wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda_v0.cu"],
+wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda_v1.cu"],
                   verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization'], extra_cflags=['/wd4624'])
 
 class WKV(torch.autograd.Function):
@@ -157,6 +157,11 @@ def CHECK_CUDA(silent=False):
         # u = torch.zeros(C, requires_grad=True, device='cuda').uniform_(-10, 10)
         # k = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-1000, 1000)
         # v = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-10, 10)
+
+        # w = torch.zeros(C, requires_grad=True, device='cuda').uniform_(-10, 10)
+        # u = torch.zeros(C, requires_grad=True, device='cuda').uniform_(-10, 10)
+        # k = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-40, 40)
+        # v = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-1, 1)
 
         # usual values
         w = torch.zeros(C, requires_grad=True, device='cuda').uniform_(-1, 1)
