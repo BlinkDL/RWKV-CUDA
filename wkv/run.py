@@ -14,7 +14,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 # From https://github.com/BlinkDL/RWKV-CUDA
 ######################################################################################################
 
-CUDA_KERNEL_VERSION = 0  # CUDA kernel version = 0,1,2
+CUDA_KERNEL_VERSION = 2  # CUDA kernel version = 0,1,2
 
 
 def set_seed(seed):
@@ -83,7 +83,7 @@ def RUN_PYTORCH(B, T, C, w, u, k, v, time_curve):
 ######################################################################################################
 
 from torch.utils.cpp_extension import load
-wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda_v1.cu"],
+wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", f"cuda/wkv_cuda_v{CUDA_KERNEL_VERSION}.cu"],
                   verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization'], extra_cflags=['/wd4624'])
 
 class WKV(torch.autograd.Function):
@@ -145,8 +145,12 @@ def CHECK_PYTORCH():
           ', err ratio =', get_err_ratio(r0, r1))
 
 def CHECK_CUDA(silent=False):
+    # B = 16
+    # T = 1024 # T <= 1024 for current kernel
+    # C = 2048 # only CUDA_KERNEL_VERSION >=2 can support C > 1024 
+
     B = 32
-    T = 768
+    T = 768 # T <= 1024 for current kernel
     C = 768
 
     set_seed(42)
@@ -158,6 +162,7 @@ def CHECK_CUDA(silent=False):
         # k = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-1000, 1000)
         # v = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-10, 10)
 
+        # large values
         # w = torch.zeros(C, requires_grad=True, device='cuda').uniform_(-10, 10)
         # u = torch.zeros(C, requires_grad=True, device='cuda').uniform_(-10, 10)
         # k = torch.zeros(B, T, C, requires_grad=True, device='cuda').uniform_(-40, 40)
