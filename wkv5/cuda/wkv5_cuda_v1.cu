@@ -7,35 +7,32 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
                                F *__restrict__ const _y)
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int _b = idx / H;
-    const int _h = idx % H;
+    const int _i = idx % N;
+    const int _b = (idx/N) / H;
+    const int _h = (idx/N) % H;
     const int _o0 = _b*T*H*N + _h*N;
     const int _o1 = _h*N;
-
     const F *__restrict__ const k = _k + _o0;
-    const F *__restrict__ const v = _v + _o0;
+    const F *__restrict__ const v = _v + _o0 + _i;
     const F *__restrict__ const r = _r + _o0;
-    F *__restrict__ const y = _y + _o0;
+    F *__restrict__ const y = _y + _o0 + _i;
 
-    for (int _i = 0; _i < N; _i++) // I will parallelize this soon
+    float state[N] = {0};   
+
+    for (int _t = 0; _t < T; _t++)
     {
-        float state[N] = {0};
+        const F vv = v[_t*H*N];
 
-        for (int _t = 0; _t < T; _t++) {
-            const int i = _t*H*N + _i;
-            const F vv = v[i];
+        for (int _j = 0; _j < N; _j++) 
+        {
+            const int j = _t*H*N + _j;
+            const int m = _o1 + _j;
 
-            for (int _j = 0; _j < N; _j++) 
-            {
-                const int j = _t*H*N + _j;
-                const int m = _o1 + _j;
-
-                const float x = k[j] * vv;
-                const float s = state[_j];
-                
-                y[i] += r[j] * (_u[m] * x + s);
-                state[_j] = s * _w[m] + x;
-            }
+            const float x = k[j] * vv;
+            const float s = state[_j];
+            
+            atomicAdd(&(y[_t*H*N]), r[j] * (_u[m] * x + s));
+            state[_j] = s * _w[m] + x;
         }
     }
 }
@@ -50,16 +47,16 @@ __global__ void kernel_backward(const int B, const int T, const int C, const int
 
 void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *y)
 {
-    dim3 threadsPerBlock( min(B*H, 16) ); // try 16 & 32
-    assert(B * H % threadsPerBlock.x == 0);
-    dim3 numBlocks(B * H / threadsPerBlock.x);
+    dim3 threadsPerBlock( min(B*C, 32) );
+    assert(B * C % threadsPerBlock.x == 0);
+    dim3 numBlocks(B * C / threadsPerBlock.x);
     kernel_forward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, u, y);
 }
 
 void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
 {
-    dim3 threadsPerBlock( min(B*H, 16) ); // try 16 & 32
-    assert(B * H % threadsPerBlock.x == 0);
-    dim3 numBlocks(B * H / threadsPerBlock.x);
+    dim3 threadsPerBlock( min(B*C, 32) );
+    assert(B * C % threadsPerBlock.x == 0);
+    dim3 numBlocks(B * C / threadsPerBlock.x);
     kernel_backward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, u, gy, gr, gk, gv, gw, gu);
 }

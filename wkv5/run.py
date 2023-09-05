@@ -1,4 +1,4 @@
-import torch
+import torch, os, sys
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.cpp_extension import load
@@ -13,8 +13,10 @@ torch.backends.cuda.matmul.allow_tf32 = False
 DEVICE = 'cuda'
 CUDA_KERNEL_VERSION = 1
 
-JOB = 'speed'
-# JOB = 'correctness'
+'''
+python run.py correctness && python run.py benchmark
+'''
+JOB = sys.argv[1].strip()
 
 ######################################################################################################
 # Python version
@@ -99,7 +101,7 @@ else:
 
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
-                verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}"])
+                verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 999", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}"])
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
@@ -145,10 +147,10 @@ def RUN_CUDA(B, T, C, H, r, k, v, w, u):
 
 def CHECK_CORRECT():
 
-    # B = 4
-    # T = 7
-    # C = 32
-    # H = 16
+    # B = 16
+    # T = 4
+    # C = 12
+    # H = 4
 
     B = 2
     T = 4
@@ -183,7 +185,7 @@ def CHECK_CORRECT():
 def CHECK_SPEED(silent=False):
 
     B = 8
-    T = 512
+    T = 4096
     C = 4096
     H = C // HEAD_SIZE
     print('B', B, 'T', T, 'C', C, 'H', H)
