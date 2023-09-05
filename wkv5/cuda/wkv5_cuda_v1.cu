@@ -7,10 +7,11 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
                                F *__restrict__ const _y)
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int _b = idx / C;
+    const int _h = (idx / N) % H;
     const int _i = idx % N;
-    const int _b = (idx/N) / H;
-    const int _h = (idx/N) % H;
-    const int _o0 = _b*T*H*N + _h*N;
+
+    const int _o0 = _b*T*C + _h*N;
     const int _o1 = _h*N;
     const F *__restrict__ const k = _k + _o0;
     const F *__restrict__ const v = _v + _o0 + _i;
@@ -19,19 +20,20 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
 
     float state[N] = {0};   
 
-    for (int _t = 0; _t < T; _t++)
+    for (int __t = 0; __t < T; __t++)
     {
-        const F vv = v[_t*H*N];
+        const int _t = __t*C;
+        const F vv = v[_t];
 
         for (int _j = 0; _j < N; _j++) 
         {
-            const int j = _t*H*N + _j;
+            const int j = _t + _j;
             const int m = _o1 + _j;
 
             const float x = k[j] * vv;
             const float s = state[_j];
             
-            atomicAdd(&(y[_t*H*N]), r[j] * (_u[m] * x + s));
+            atomicAdd(y + _t, r[j] * (_u[m] * x + s));
             state[_j] = s * _w[m] + x;
         }
     }
