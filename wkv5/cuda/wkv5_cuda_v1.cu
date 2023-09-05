@@ -51,7 +51,7 @@ __global__ void kernel_backward(const int B, const int T, const int C, const int
 
 void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *y)
 {
-    dim3 threadsPerBlock( min(B*H, 32) );
+    dim3 threadsPerBlock( min(B*H, 16) ); // try 16 & 32
     assert(B * H % threadsPerBlock.x == 0);
     dim3 numBlocks(B * H / threadsPerBlock.x);
     kernel_forward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, u, y);
@@ -59,7 +59,7 @@ void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, floa
 
 void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
 {
-    dim3 threadsPerBlock( min(B*H, 32) );
+    dim3 threadsPerBlock( min(B*H, 16) ); // try 16 & 32
     assert(B * H % threadsPerBlock.x == 0);
     dim3 numBlocks(B * H / threadsPerBlock.x);
     kernel_backward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, u, gy, gr, gk, gv, gw, gu);

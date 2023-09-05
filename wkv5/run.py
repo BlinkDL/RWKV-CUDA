@@ -13,6 +13,12 @@ torch.backends.cuda.matmul.allow_tf32 = False
 DEVICE = 'cuda'
 CUDA_KERNEL_VERSION = 1
 
+JOB = 'speed' # speed // correctness
+
+######################################################################################################
+# Python version
+######################################################################################################
+
 def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -82,31 +88,22 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
     return out.view(B, T, C)
 
 ######################################################################################################
-# Load the CUDA kernel
+# CUDA kernel
 ######################################################################################################
 
-# B = 4
-# T = 7
-# C = 32
-# H = 16
-
-B = 2
-T = 4
-C = 9
-H = 3
-
-# B = 1
-# T = 2
-# C = 2
-# H = 2
+if JOB == 'correctness':
+    HEAD_SIZE = 3
+else:
+    HEAD_SIZE = 64
 
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
-                  verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DNN={(C//H) ** 2}"])
+                verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DNN={HEAD_SIZE ** 2}"])
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
     def forward(ctx, B, T, C, H, r, k, v, w, u):
+        assert HEAD_SIZE == C // H
         ctx.B = B
         ctx.T = T
         ctx.C = C
@@ -145,7 +142,22 @@ def RUN_CUDA(B, T, C, H, r, k, v, w, u):
 # Check correctness & speed benchmark
 ######################################################################################################
 
-def CHECK_PYTORCH():
+def CHECK_CORRECT():
+
+    # B = 4
+    # T = 7
+    # C = 32
+    # H = 16
+
+    B = 2
+    T = 4
+    C = 12
+    H = 4
+
+    # B = 1
+    # T = 2
+    # C = 2
+    # H = 2
 
     set_seed(42)
     with torch.no_grad():
@@ -155,17 +167,47 @@ def CHECK_PYTORCH():
         w = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
         u = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
 
-    # y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, w, u)
-    y0 = RUN_FORMULA_2(B, T, C, H, r, k, v, w, u)
+    y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, w, u)
     print('result', val(y0), '\n\n')
 
-    # y1 = RUN_FORMULA_2(B, T, C, H, r, k, v, w, u)
-    y1 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+    y1 = RUN_FORMULA_2(B, T, C, H, r, k, v, w, u)
     print('result', val(y1), '\n\n')
 
-    print('--> correct =', torch.allclose(y0, y1),
-          ', err ratio =', get_err_ratio(y0, y1))
+    y2 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+    print('result', val(y2), '\n\n')
+
+    print('--> correct =', torch.allclose(y0, y1), torch.allclose(y0, y2),
+          ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2))
+
+def CHECK_SPEED(silent=False):
+
+    B = 8
+    T = 512
+    C = 4096
+    H = C // HEAD_SIZE
+    print('B', B, 'T', T, 'C', C, 'H', H)
+
+    set_seed(42)
+    with torch.no_grad():
+        r = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        k = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        v = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        w = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        u = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        r = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+    if not silent:
+        print('CUDA forward\n', prof.key_averages(group_by_stack_n=5).table(
+            sort_by='self_cuda_time_total', row_limit=5))
 
 if __name__ == "__main__":
-    print('\n\nVerify pytorch...')
-    CHECK_PYTORCH()
+
+    if JOB == 'correctness':
+        print('\n\nCheck correctness...')
+        CHECK_CORRECT()
+    else:
+        print('\n\nCUDA warmup...')
+        CHECK_SPEED(silent=True)  # warmup
+        CHECK_SPEED(silent=True)  # warmup
+        CHECK_SPEED()
