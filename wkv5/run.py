@@ -27,48 +27,57 @@ def val(x):
     return x.detach().cpu().numpy()
 
 def RUN_FORMULA_1(B, T, C, H, r, k, v, w, u):
-    S = C // H
-    r = r.view(B, T, H, S)
-    k = k.view(B, T, H, S)
-    v = v.view(B, T, H, S)
-    w = w.view(H, S)
-    u = u.view(H, S)
-    out = torch.zeros((B, T, H, S), device=DEVICE)
+    N = C // H
+    r = r.view(B, T, H, N)
+    k = k.view(B, T, H, N)
+    v = v.view(B, T, H, N)
+    w = w.view(H, N)
+    u = u.view(H, N)
+    out = torch.zeros((B, T, H, N), device=DEVICE)
 
     for b in range(B):
         for h in range(H):
             for t in range(T):
-                for i in range(S):
-                    for j in range(S):
-                        for tt in range(0, t+1):
-                            ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
-                            out[b,t,h,i] += r[b,t,h,j] * ww * k[b,tt,h,j] * v[b,tt,h,i]
+                for n in range(N):
+                    for nn in range(N):
+                        for tt in range(t+1):
+                            ww = u[h,nn] if (tt == t) else w[h,nn] ** (t - tt - 1)
+                            out[b,t,h,n] += r[b,t,h,nn] * ww * k[b,tt,h,nn] * v[b,tt,h,n]
 
     return out.view(B, T, C)
 
 def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
-    S = C // H
-    r = r.flatten().contiguous() # BTHS
-    k = k.flatten().contiguous() # BTHS
-    v = v.flatten().contiguous() # BTHS
-    w = w.flatten().contiguous() # HS
-    u = u.flatten().contiguous() # HS
+    N = C // H
+    r = r.flatten().contiguous() # BTHN
+    k = k.flatten().contiguous() # BTHN
+    v = v.flatten().contiguous() # BTHN
+    w = w.flatten().contiguous() # HN
+    u = u.flatten().contiguous() # HN
     out = torch.zeros(B*T*C, device=DEVICE).contiguous()
 
     for b in range(B):
         for h in range(H):
-            ss = torch.zeros(S*S, device=DEVICE).contiguous()
+            state = torch.zeros(N*N, device=DEVICE).contiguous()
             for t in range(T):
-                ooo = b*H*T*S + t*H*S + h*S
-                oo = h*S
-                for n in range(S*S):
-                    i = ooo + n // S
-                    j = ooo + n % S
-                    m = oo + n % S
-                    x = k[j] * v[i]
-                    s = ss[n]
-                    out[i] += r[j] * (u[m] * x + s)
-                    ss[n] = s * w[m] + x
+
+                _o0 = b*H*T*N + t*H*N + h*N
+                _o1 = h*N
+
+                for _i in range(N):
+
+                    i = _o0 + _i
+                    
+                    for _j in range(N):
+                        
+                        j = _o0 + _j
+                        m = _o1 + _j
+                        ij = _i * N + _j
+
+                        x = k[j] * v[i]
+                        s = state[ij]
+                        
+                        out[i] += r[j] * (u[m] * x + s)
+                        state[ij] = s * w[m] + x
 
     return out.view(B, T, C)
 
@@ -91,10 +100,9 @@ H = 3
 # C = 2
 # H = 2
 
-SSS = C*C//(H*H)
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
-                  verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DSSS={SSS}"])
+                  verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DNN={(C//H) ** 2}"])
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
