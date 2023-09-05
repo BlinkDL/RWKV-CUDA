@@ -13,7 +13,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 DEVICE = 'cuda'
 CUDA_KERNEL_VERSION = 1
 
-JOB = 'speed' # speed // correctness
+JOB = 'speed'
+# JOB = 'correctness'
 
 ######################################################################################################
 # Python version
@@ -98,7 +99,7 @@ else:
 
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
-                verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DNN={HEAD_SIZE ** 2}"])
+                verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}"])
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
@@ -208,6 +209,5 @@ if __name__ == "__main__":
         CHECK_CORRECT()
     else:
         print('\n\nCUDA warmup...')
-        CHECK_SPEED(silent=True)  # warmup
         CHECK_SPEED(silent=True)  # warmup
         CHECK_SPEED()

@@ -6,7 +6,6 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
                                const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ const _w, const F *__restrict__ const _u,
                                F *__restrict__ const _y)
 {
-    const int N = C / H;
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int _b = idx / H;
     const int _h = idx % H;
@@ -18,10 +17,11 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
     const F *__restrict__ const r = _r + _o0;
     F *__restrict__ const y = _y + _o0;
 
-    float state[NN] = {0};
-    for (int _t = 0; _t < T; _t++) {
-        for (int _i = 0; _i < N; _i++) 
-        {    
+    for (int _i = 0; _i < N; _i++) // I will parallelize this soon
+    {
+        float state[N] = {0};
+
+        for (int _t = 0; _t < T; _t++) {
             const int i = _t*H*N + _i;
             const F vv = v[i];
 
@@ -29,13 +29,12 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
             {
                 const int j = _t*H*N + _j;
                 const int m = _o1 + _j;
-                const int ij = _i*N + _j;
 
                 const float x = k[j] * vv;
-                const float s = state[ij];
+                const float s = state[_j];
                 
                 y[i] += r[j] * (_u[m] * x + s);
-                state[ij] = s * _w[m] + x;
+                state[_j] = s * _w[m] + x;
             }
         }
     }
