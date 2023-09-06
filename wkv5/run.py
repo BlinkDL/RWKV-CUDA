@@ -11,7 +11,7 @@ torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_tf32 = False
 
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 1
+CUDA_KERNEL_VERSION = 2
 
 '''
 python run.py correctness && python run.py benchmark
@@ -87,6 +87,41 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
                         
                         out[i] += r[j] * (u[m] * x + s)
                         state[ij] = s * w[m] + x
+
+    return out.view(B, T, C)
+
+def RUN_FORMULA_3(B, T, C, H, r, k, v, w, u):
+    N = C // H
+    r = r.flatten().contiguous() # BTHN
+    k = k.flatten().contiguous() # BTHN
+    v = v.flatten().contiguous() # BTHN
+    w = w.flatten().contiguous() # HN
+    u = u.flatten().contiguous() # HN
+    out = torch.zeros(B*T*C, device=DEVICE).contiguous()
+
+    for h in range(H):
+        for b in range(B):
+            state = torch.zeros(N*N, device=DEVICE).contiguous()
+            for t in range(T):
+                _o0 = b*H*T*N + t*H*N + h*N
+                _o1 = h*N
+
+                for _i in range(N):
+
+                    i = _o0 + _i
+
+                    for _j in range(N):
+
+                        j = _o0 + _j
+                        m = _o1 + _j
+                        ij = _i * N + _j
+
+                        x = k[j] * v[i]
+                        s = state[ij]
+
+                        out[i] += r[j] * (u[m] * x + s)
+                        state[ij] = s * w[m] + x
+
 
     return out.view(B, T, C)
 
@@ -176,11 +211,14 @@ def CHECK_CORRECT():
     y1 = RUN_FORMULA_2(B, T, C, H, r, k, v, w, u)
     print('result', val(y1), '\n\n')
 
-    y2 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+    y2 = RUN_FORMULA_3(B, T, C, H, r, k, v, w, u)
     print('result', val(y2), '\n\n')
 
-    print('--> correct =', torch.allclose(y0, y1), torch.allclose(y0, y2),
-          ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2))
+    y3 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+    print('result', val(y3), '\n\n')
+
+    print('--> correct =', torch.allclose(y0, y1), torch.allclose(y0, y2), torch.allclose(y1, y2), torch.allclose(y1, y3),
+          ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2), get_err_ratio(y1, y2), get_err_ratio(y1, y3))
 
 def CHECK_SPEED(silent=False):
 
