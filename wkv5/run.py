@@ -11,7 +11,7 @@ torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_tf32 = False
 
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 1
+CUDA_KERNEL_VERSION = 2
 
 '''
 python run.py correctness && python run.py benchmark
