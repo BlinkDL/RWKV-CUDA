@@ -6,8 +6,7 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
                                       const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ const _w, const F *__restrict__ const _u,
                                       F *__restrict__ const _y)
 {
-    extern __shared__ float4 s_state[N >> 2];
-  
+
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const int _b = idx / C;
   const int _h = (idx / N) - ((idx / N) /  H) * H;
@@ -23,39 +22,41 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
   const F *__restrict__ const v = _v + _o0 + _i;
   F *__restrict__ const y = _y + _o0 + _i;
 
+  __align__(16) float4 state[N >> 2] = { make_float4(0.0f, 0.0f, 0.0f, 0.0f) };
+
   for (int __t = 0; __t < T; __t++)
   {
     const int _t = __t * (C >> 2);
     const int tt = __t * C;
     const F vv = v[tt];
-    float4 result = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float yy = 0.0f;
 
+    #pragma unroll
     for (int _j = 0; _j < N >> 2; _j++)
     {
       const int j = _t + _j;
 
       const float4 k_val = k[j];
       const float4 r_val = r[j];
+      const float4 ww = w[_j];
+      const float4 uu = u[_j];
       float4 x;
       x.x = k_val.x * vv;
       x.y = k_val.y * vv; 
       x.z = k_val.z * vv;
       x.w = k_val.w * vv;
 
-      float4 s = s_state[_j];
+      float4 &s = state[_j];
 
-      result.x += r_val.x * (u[_j].x * x.x + s.x);
-      result.y += r_val.y * (u[_j].y * x.y + s.y);
-      result.z += r_val.z * (u[_j].z * x.z + s.z);
-      result.w += r_val.w * (u[_j].w * x.w + s.w);
+      yy += r_val.x * (uu.x * x.x + s.x) + r_val.y * (uu.y * x.y + s.y) + r_val.z * (uu.z * x.z + s.z) + r_val.w * (uu.w * x.w + s.w);
 
-      s_state[_j].x = s.x * w[_j].x + x.x;
-      s_state[_j].y = s.y * w[_j].y + x.y;
-      s_state[_j].z = s.z * w[_j].z + x.z;
-      s_state[_j].w = s.w * w[_j].w + x.w;
+      s.x = s.x * ww.x + x.x;
+      s.y = s.y * ww.y + x.y;
+      s.z = s.z * ww.z + x.z;
+      s.w = s.w * ww.w + x.w;
     }
 
-    y[tt] += result.x + result.y + result.z + result.w; 
+    y[tt] = yy; 
   }
 }
 

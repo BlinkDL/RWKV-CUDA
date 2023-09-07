@@ -1,0 +1,138 @@
+Using /root/.cache/torch_extensions/py38_cu121 as PyTorch extensions root...
+Creating extension directory /root/.cache/torch_extensions/py38_cu121/wkv5...
+Detected CUDA files, patching ldflags
+Emitting ninja build file /root/.cache/torch_extensions/py38_cu121/wkv5/build.ninja...
+Building extension module wkv5...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/3] /usr/local/cuda/bin/nvcc  -DTORCH_EXTENSION_NAME=wkv5 -DTORCH_API_INCLUDE_EXTENSION_H -DPYBIND11_COMPILER_TYPE=\"_gcc\" -DPYBIND11_STDLIB=\"_libstdcpp\" -DPYBIND11_BUILD_ABI=\"_cxxabi1013\" -isystem /usr/local/lib/python3.8/dist-packages/torch/include -isystem /usr/local/lib/python3.8/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/lib/python3.8/dist-packages/torch/include/TH -isystem /usr/local/lib/python3.8/dist-packages/torch/include/THC -isystem /usr/local/cuda/include -isystem /usr/include/python3.8 -D_GLIBCXX_USE_CXX11_ABI=1 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_52,code=sm_52 -gencode=arch=compute_60,code=sm_60 -gencode=arch=compute_61,code=sm_61 -gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_75,code=sm_75 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_90,code=compute_90 -gencode=arch=compute_90,code=sm_90 --compiler-options '-fPIC' -res-usage --use_fast_math -O3 -Xptxas -O3 --extra-device-vectorization -DN=64 -DCC=4096 -std=c++17 -c /data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu -o wkv5_cuda_v4.cuda.o 
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_52'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 2 registers, 424 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_52'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    24 bytes stack frame, 24 bytes spill stores, 24 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 384 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_60'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 2 registers, 424 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_60'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    24 bytes stack frame, 24 bytes spill stores, 24 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 384 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_61'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 2 registers, 424 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_61'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    24 bytes stack frame, 24 bytes spill stores, 24 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 384 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_70'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 4 registers, 456 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_70'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 416 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_75'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 4 registers, 456 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_75'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    24 bytes stack frame, 24 bytes spill stores, 24 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 416 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_80'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 4 registers, 456 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_80'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 416 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_86'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 4 registers, 456 bytes cmem[0]
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_86'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem, 416 bytes cmem[0]
+/data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_cuda_v4.cu(25): warning #20044-D: extern declaration of the entity state is treated as a static definition
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_' for 'sm_90'
+ptxas info    : Function properties for _Z15kernel_backwardIfEviiiiPKT_S2_S2_S2_S2_S2_PS0_S3_S3_S3_S3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 4 registers
+ptxas info    : Compiling entry function '_Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_' for 'sm_90'
+ptxas info    : Function properties for _Z14kernel_forwardIfEviiiiPKT_S2_S2_S2_S2_PS0_
+    8 bytes stack frame, 8 bytes spill stores, 8 bytes spill loads
+ptxas info    : Used 255 registers, 256 bytes smem
+[2/3] c++ -MMD -MF wkv5_op.o.d -DTORCH_EXTENSION_NAME=wkv5 -DTORCH_API_INCLUDE_EXTENSION_H -DPYBIND11_COMPILER_TYPE=\"_gcc\" -DPYBIND11_STDLIB=\"_libstdcpp\" -DPYBIND11_BUILD_ABI=\"_cxxabi1013\" -isystem /usr/local/lib/python3.8/dist-packages/torch/include -isystem /usr/local/lib/python3.8/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/lib/python3.8/dist-packages/torch/include/TH -isystem /usr/local/lib/python3.8/dist-packages/torch/include/THC -isystem /usr/local/cuda/include -isystem /usr/include/python3.8 -D_GLIBCXX_USE_CXX11_ABI=1 -fPIC -std=c++17 -c /data/shared/public/cangshui/bbuf/RWKV-CUDA/wkv5/cuda/wkv5_op.cpp -o wkv5_op.o 
+[3/3] c++ wkv5_op.o wkv5_cuda_v4.cuda.o -shared -L/usr/local/lib/python3.8/dist-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda/lib64 -lcudart -o wkv5.so
+STAGE:2023-09-07 15:44:52 25:25 ActivityProfilerController.cpp:311] Completed Stage: Warm Up
+STAGE:2023-09-07 15:44:52 25:25 ActivityProfilerController.cpp:317] Completed Stage: Collection
+STAGE:2023-09-07 15:44:53 25:25 ActivityProfilerController.cpp:321] Completed Stage: Post Processing
+STAGE:2023-09-07 15:44:53 25:25 ActivityProfilerController.cpp:311] Completed Stage: Warm Up
+STAGE:2023-09-07 15:44:53 25:25 ActivityProfilerController.cpp:317] Completed Stage: Collection
+STAGE:2023-09-07 15:44:53 25:25 ActivityProfilerController.cpp:321] Completed Stage: Post Processing
+Loading extension module wkv5...
+
+
+CUDA warmup...
+B 8 T 4096 C 4096 H 64
+B 8 T 4096 C 4096 H 64
+CUDA forward
+ -------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                     Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                    WKV_5         0.34%     111.000us         0.63%     204.000us     204.000us      32.176ms        98.84%      32.529ms      32.529ms             1  
+              aten::fill_         0.06%      21.000us         0.12%      38.000us      38.000us     302.000us         0.93%     302.000us     302.000us             1  
+                 aten::to         0.02%       5.000us         0.02%       5.000us       1.000us      24.000us         0.07%      24.000us       4.800us             5  
+              aten::empty         0.06%      20.000us         0.06%      20.000us      20.000us      23.000us         0.07%      23.000us      23.000us             1  
+              aten::zeros         0.06%      19.000us         0.27%      89.000us      89.000us      17.000us         0.05%     353.000us     353.000us             1  
+-------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 32.478ms
+Self CUDA time total: 32.553ms
+
