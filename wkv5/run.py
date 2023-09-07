@@ -263,8 +263,7 @@ def CHECK_SPEED(silent=False):
         u = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
 
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
-        for i in range(8):
-            r = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+        r = RUN_CUDA(B, T, C, H, r, k, v, w, u)
     if not silent:
         print('CUDA forward\n', prof.key_averages(group_by_stack_n=5).table(
             sort_by='self_cuda_time_total', row_limit=5))
