@@ -92,14 +92,15 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
 
     return out.view(B, T, C)
 
-def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u):
+def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, _w, u):
     N = C // H
     gy = gy.view(B, T, H, N)
     r = r.view(B, T, H, N)
     k = k.view(B, T, H, N)
     v = v.view(B, T, H, N)
-    w = w.view(H, N)
+    _w = _w.view(H, N)
     u = u.view(H, N)
+    w = torch.exp(_w)
 
     gr = torch.zeros((B, T, H, N), device=DEVICE)    
     gk = torch.zeros((B, T, H, N), device=DEVICE)
@@ -127,7 +128,8 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u):
                         gu[h,n] += r[b,t,h,n] * k[b,t,h,n] * v[b,t,h,nn] * gy[b,t,h,nn]
 
                         for tt in range(t-1):
-                            gw[h,n] += r[b,t,h,n] * (t-tt-1) * (w[h,n] ** (t-tt-2)) * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
+                            ww = (t-tt-1) * _w[h,n] * (w[h,n] ** (t - tt - 1)) # passing gradient to the "original w" (not the w here)
+                            gw[h,n] += r[b,t,h,n] * ww * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
 
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
 
@@ -266,11 +268,11 @@ def CHECK_CORRECT():
         v = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
         w = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
         u = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
-        print(f'r\n{val(r)}\n')
-        print(f'k\n{val(k)}\n')
-        print(f'v\n{val(v)}\n')
-        print(f'w\n{val(w)}\n')
-        print(f'u\n{val(u)}\n')
+        # print(f'r\n{val(r)}\n')
+        # print(f'k\n{val(k)}\n')
+        # print(f'v\n{val(v)}\n')
+        # print(f'w\n{val(w)}\n')
+        # print(f'u\n{val(u)}\n')
 
     if JOB == 'correctness_more':
         y0 = RUN_CUDA_REF(B, T, C, H, r, k, v, w, u)
@@ -297,6 +299,8 @@ def CHECK_CORRECT():
             def LOSS(y): # a strange loss for better verification
                 return ((y * y) - torch.tanh(y)).sum()
 
+            y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u) # !!! WE USE DOUBLE EXP HERE !!!
+
             yy = y0.clone().detach().requires_grad_(True)
             LOSS(yy).backward()
             gy = yy.grad.data.clone()
@@ -314,7 +318,7 @@ def CHECK_CORRECT():
             print(f'g_w0\n{val(gw0)}\n')
             print(f'g_u0\n{val(gu0)}\n')
 
-            gr1, gk1, gv1, gw1, gu1 = RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u)
+            gr1, gk1, gv1, gw1, gu1 = RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, -torch.exp(w), u) # !!! WE USE SINGLE EXP HERE !!!
             print(f'g_r1\n{val(gr1)}\n')
             print(f'g_k1\n{val(gk1)}\n')
             print(f'g_v1\n{val(gv1)}\n')
