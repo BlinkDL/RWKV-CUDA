@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-#define F4(A, B) ((float4 *)(A))[(B) >> 2]
-
 template <typename F>
 __global__ void kernel_forward(const int B, const int T, const int C, const int H,
                                const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ const _w, const F *__restrict__ const _u,
@@ -11,7 +9,7 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int _b = idx / C;
     const int _h = (idx / N) % H;
-    const int _i = idx % N;
+    const int i = idx % N;
 
     const int _o0 = _b*T*C + _h*N;
     const int _o1 = _h*N;
@@ -20,8 +18,8 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
     const float4 *__restrict__ const w = (float4 *)(_w + _o1);
     const float4 *__restrict__ const u = (float4 *)(_u + _o1);
 
-    const F *__restrict__ const v = _v + _o0 + _i;
-    F *__restrict__ const y = _y + _o0 + _i;
+    const F *__restrict__ const v = _v + _o0 + i;
+    F *__restrict__ const y = _y + _o0 + i;
 
     __align__(16) float4 state[N/4] = { make_float4(0.0f, 0.0f, 0.0f, 0.0f) };
 
@@ -33,12 +31,12 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
         F yy = 0;
 
         #pragma unroll
-        for (int _j = 0; _j < N/4; _j++) 
+        for (int j = 0; j < N/4; j++)
         {
-            const float4 rr = r[ttt + _j];
-            const float4 kk = k[ttt + _j];
-            const float4 ww = w[_j];
-            const float4 uu = u[_j];
+            const float4 rr = r[ttt + j];
+            const float4 kk = k[ttt + j];
+            const float4 ww = w[j];
+            const float4 uu = u[j];
 
             float4 x;
             x.x = kk.x * vv;
@@ -46,10 +44,10 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
             x.z = kk.z * vv;
             x.w = kk.w * vv;
 
-            float4 s = state[_j];
+            float4 s = state[j];
             yy += rr.x * (uu.x * x.x + s.x) + rr.y * (uu.y * x.y + s.y) + rr.z * (uu.z * x.z + s.z) + rr.w * (uu.w * x.w + s.w);
 
-            float4* ss = state + _j;
+            float4* ss = state + j;
             ss->x = s.x * ww.x + x.x;
             ss->y = s.y * ww.y + x.y;
             ss->z = s.z * ww.z + x.z;
