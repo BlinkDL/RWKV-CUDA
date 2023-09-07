@@ -127,7 +127,7 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u):
                         gu[h,n] += r[b,t,h,n] * k[b,t,h,n] * v[b,t,h,nn] * gy[b,t,h,nn]
 
                         for tt in range(t-1):
-                            gw[h,n] += r[b,t,h,n] * (tt+1) * (w[h,n] ** tt) * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
+                            gw[h,n] += r[b,t,h,n] * (t-tt-1) * (w[h,n] ** (t-tt-2)) * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
 
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
 
@@ -137,22 +137,22 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u):
 
 if JOB == 'correctness' or JOB == 'backward':
     # B = 16
-    # T = 4
+    # T = 5
     # C = 16
     # HEAD_SIZE = 4
 
     # B = 2
-    # T = 4
+    # T = 5
     # C = 16
     # HEAD_SIZE = 4
 
     B = 2
-    T = 3
+    T = 5
     C = 4
     HEAD_SIZE = 2
 
     # B = 1
-    # T = 3
+    # T = 5
     # C = 1
     # HEAD_SIZE = 1
 else:
