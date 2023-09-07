@@ -10,11 +10,12 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_tf32 = False
 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 'coll'
+CUDA_KERNEL_VERSION = '1b'
 
 '''
-python run.py correctness && python run.py benchmark
+python run.py correctness && python run.py correctness_more && python run.py benchmark
 '''
 JOB = sys.argv[1].strip()
 
@@ -95,13 +96,80 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
 ######################################################################################################
 
 if JOB == 'correctness':
-    HEAD_SIZE = 3
+    # B = 16
+    # T = 4
+    # C = 16
+    # HEAD_SIZE = 4
+
+    B = 2
+    T = 4
+    C = 16
+    HEAD_SIZE = 4
+
+    # B = 1
+    # T = 2
+    # C = 2
+    # HEAD_SIZE = 1
 else:
     HEAD_SIZE = 64
+    B = 8
+    T = 4096
+    C = 4096
+
+H = C // HEAD_SIZE
+
+######################################################################################################
+# CUDA reference
+######################################################################################################
 
 from torch.utils.cpp_extension import load
-wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
+wkv_cuda_ref = load(name="wkv5_ref", sources=["cuda/wkv5_ref.cpp", f"cuda/wkv5_cuda_ref.cu"],
                 verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}"])
+
+class WKV_5_REF(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, B, T, C, H, r, k, v, w, u):
+        assert HEAD_SIZE == C // H
+        ctx.B = B
+        ctx.T = T
+        ctx.C = C
+        ctx.H = H
+        r = r.contiguous()
+        k = k.contiguous()
+        v = v.contiguous()
+        w = w.contiguous()
+        u = u.contiguous()
+        ctx.save_for_backward(r, k, v, w, u)
+        y = torch.zeros((B, T, C), device='cuda').contiguous()
+        wkv_cuda_ref.forward(B, T, C, H, r, k, v, w, u, y)
+        return y
+
+    @staticmethod
+    def backward(ctx, gy):
+        B = ctx.B
+        T = ctx.T
+        C = ctx.C
+        H = ctx.H
+        r, k, v, w, u = ctx.saved_tensors
+        gr = torch.zeros((B, T, C), device='cuda', requires_grad=False)
+        gk = torch.zeros((B, T, C), device='cuda', requires_grad=False)
+        gv = torch.zeros((B, T, C), device='cuda', requires_grad=False)
+        gw = torch.zeros((B, H, C//H), device='cuda', requires_grad=False)
+        gu = torch.zeros((B, H, C//H), device='cuda', requires_grad=False)
+        wkv_cuda_ref.backward(B, T, C, H, r, k, v, w, u, gy.contiguous(), gr, gk, gv, gw, gu)
+        gw = torch.sum(gw, dim=0)
+        gu = torch.sum(gu, dim=0)
+        return (None, None, None, None, gr, gk, gv, gw, gu)
+
+def RUN_CUDA_REF(B, T, C, H, r, k, v, w, u):
+    return WKV_5_REF.apply(B, T, C, H, r.cuda(), k.cuda(), v.cuda(), w.cuda(), u.cuda())
+
+######################################################################################################
+# CUDA kernel
+######################################################################################################
+
+wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
+                verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}", f"-DCC={C}"])
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
@@ -146,22 +214,6 @@ def RUN_CUDA(B, T, C, H, r, k, v, w, u):
 ######################################################################################################
 
 def CHECK_CORRECT():
-
-    # B = 16
-    # T = 4
-    # C = 12
-    # H = 4
-
-    B = 2
-    T = 4
-    C = 12
-    H = 4
-
-    # B = 1
-    # T = 2
-    # C = 2
-    # H = 2
-
     set_seed(42)
     with torch.no_grad():
         r = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
@@ -170,24 +222,36 @@ def CHECK_CORRECT():
         w = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
         u = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
 
-    y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, w, u)
-    print('result', val(y0), '\n\n')
+    if JOB == 'correctness_more':
+        y0 = RUN_CUDA_REF(B, T, C, H, r, k, v, w, u)
+        y1 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+        print('--> correct =', torch.allclose(y0, y1), ', err ratio =', get_err_ratio(y0, y1))
+    
+    else:
 
-    y1 = RUN_FORMULA_2(B, T, C, H, r, k, v, w, u)
-    print('result', val(y1), '\n\n')
+        y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, w, u)
+        print('result', val(y0), '\n\n')
 
-    y2 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
-    print('result', val(y2), '\n\n')
+        y1 = RUN_FORMULA_2(B, T, C, H, r, k, v, w, u)
+        print('result', val(y1), '\n\n')
 
-    print('--> correct =', torch.allclose(y0, y1), torch.allclose(y0, y2),
-          ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2))
+        y2 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+        print('result', val(y2), '\n\n')
+
+        print('--> correct =', torch.allclose(y0, y1), torch.allclose(y0, y2),
+            ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2))
+
+    # # a strange loss for better verification
+    # loss0 = ((y0 * y0) - torch.tanh(y0)).sum()
+    # loss0.backward()
+    # gr0 = r.grad.data.clone()
+    # gk0 = k.grad.data.clone()
+    # gv0 = v.grad.data.clone()
+    # gw0 = w.grad.data.clone()
+    # gu0 = u.grad.data.clone()
+    # print(gr0, gk0, gv0, gw0, gu0)
 
 def CHECK_SPEED(silent=False):
-
-    B = 8
-    T = 4096
-    C = 4096
-    H = C // HEAD_SIZE
     print('B', B, 'T', T, 'C', C, 'H', H)
 
     set_seed(42)
@@ -208,9 +272,12 @@ def CHECK_SPEED(silent=False):
 if __name__ == "__main__":
 
     if JOB == 'correctness':
-        print('\n\nCheck correctness...')
+        print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness...')
         CHECK_CORRECT()
+    elif JOB == 'correctness_more':
+        print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness (more)...')
+        CHECK_CORRECT()        
     else:
-        print('\n\nCUDA warmup...')
+        print(f'\n\nCUDA kernel v{CUDA_KERNEL_VERSION} warmup...')
         CHECK_SPEED(silent=True)  # warmup
         CHECK_SPEED()
