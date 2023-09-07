@@ -26,7 +26,7 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
     for (int _t = 0; _t < T; _t++)
     {
         const int tt = _t*C;
-        const int ttt = _t*(C >> 2);
+        const int ttt = tt >> 2;
         const F vv = v[tt];
         F yy = 0;
 
