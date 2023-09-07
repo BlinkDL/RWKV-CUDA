@@ -104,11 +104,13 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u):
     gr = torch.zeros((B, T, H, N), device=DEVICE)    
     gk = torch.zeros((B, T, H, N), device=DEVICE)
     gv = torch.zeros((B, T, H, N), device=DEVICE)
+    gw = torch.zeros((H, N), device=DEVICE)
+    gu = torch.zeros((H, N), device=DEVICE)
 
     for b in range(B):
         for h in range(H):
-            for t in range(T):
-                for n in range(N):
+            for n in range(N):
+                for t in range(T):
                     for nn in range(N):
 
                         for tt in range(t+1):
@@ -122,7 +124,12 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u):
                             ww = u[h,nn] if (tt == t) else w[h,nn] ** (tt - t - 1)
                             gv[b,t,h,n] += r[b,tt,h,nn] * ww * k[b,t,h,nn] * gy[b,tt,h,n]
 
-    return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C)
+                        gu[h,n] += r[b,t,h,n] * k[b,t,h,n] * v[b,t,h,nn] * gy[b,t,h,nn]
+
+                        for tt in range(t-1):
+                            gw[h,n] += r[b,t,h,n] * (tt+1) * (w[h,n] ** tt) * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
+
+    return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
 
 ######################################################################################################
 # CUDA kernel
@@ -139,15 +146,15 @@ if JOB == 'correctness' or JOB == 'backward':
     # C = 16
     # HEAD_SIZE = 4
 
-    # B = 2
-    # T = 3
-    # C = 4
-    # HEAD_SIZE = 2
-
-    B = 1
+    B = 2
     T = 3
-    C = 2
-    HEAD_SIZE = 1
+    C = 4
+    HEAD_SIZE = 2
+
+    # B = 1
+    # T = 3
+    # C = 1
+    # HEAD_SIZE = 1
 else:
     B = 8
     T = 4096
@@ -259,6 +266,11 @@ def CHECK_CORRECT():
         v = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
         w = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
         u = torch.zeros(C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        print(f'r\n{val(r)}\n')
+        print(f'k\n{val(k)}\n')
+        print(f'v\n{val(v)}\n')
+        print(f'w\n{val(w)}\n')
+        print(f'u\n{val(u)}\n')
 
     if JOB == 'correctness_more':
         y0 = RUN_CUDA_REF(B, T, C, H, r, k, v, w, u)
@@ -302,14 +314,18 @@ def CHECK_CORRECT():
             print(f'g_w0\n{val(gw0)}\n')
             print(f'g_u0\n{val(gu0)}\n')
 
-            gr1, gk1, gv1 = RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u)
+            gr1, gk1, gv1, gw1, gu1 = RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u)
             print(f'g_r1\n{val(gr1)}\n')
             print(f'g_k1\n{val(gk1)}\n')
             print(f'g_v1\n{val(gv1)}\n')
+            print(f'g_w1\n{val(gw1)}\n')
+            print(f'g_u1\n{val(gu1)}\n')
 
             print('--> g_r correct =', torch.allclose(gr0, gr1), ', err ratio =', get_err_ratio(gr0, gr1))
             print('--> g_k correct =', torch.allclose(gk0, gk1), ', err ratio =', get_err_ratio(gk0, gk1))
             print('--> g_v correct =', torch.allclose(gv0, gv1), ', err ratio =', get_err_ratio(gv0, gv1))
+            print('--> g_w correct =', torch.allclose(gw0, gw1), ', err ratio =', get_err_ratio(gw0, gw1))
+            print('--> g_u correct =', torch.allclose(gu0, gu1), ', err ratio =', get_err_ratio(gu0, gu1))
 
 
 def CHECK_SPEED(silent=False):
