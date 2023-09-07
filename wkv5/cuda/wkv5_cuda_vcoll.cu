@@ -3,43 +3,34 @@
 
 template <typename F>
 __global__ void kernel_forward(const int B, const int T, const int C, const int H,
-                               const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ const _w, const F *__restrict__ const _u,
+                               const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ _w, const F *__restrict__ _u,
                                F *__restrict__ const _y)
 {
     const int b = blockIdx.x / H;
     const int h = blockIdx.x % H;
     const int i = threadIdx.x;
-
-    const int _o0 = b*T*C + h*N;
-    const int _o1 = h*N;
-    const float *__restrict__ const r = (float *)(_r + _o0);
-    const float *__restrict__ const k = (float *)(_k + _o0);
-    const float *__restrict__ const w = (float *)(_w + _o1);
-    const float *__restrict__ const u = (float *)(_u + _o1);
-
-    const F *__restrict__ const v = _v + _o0 + i;
-    F *__restrict__ const y = _y + _o0 + i;
+    _w += h*N;
+    _u += h*N;
 
     __shared__ float state[N * N], rr[N], kk[N];
 
     for (int j = 0; j < N; ++j)
         state[j * N + i] = 0;
 
-    for (int _t = 0; _t < T; _t++)
+    for (int _t = b*T*C + h*N + i, _tend = (b+1)*T*C + h*N + i; _t < _tend; _t += C)
     {
-        const int tt = _t*C;
-        const F vv = v[tt];
+        const F vv = _v[_t];
         F yy = 0;
 
-        rr[i] = r[tt + i];
-        kk[i] = k[tt + i];
+        rr[i] = _r[_t];
+        kk[i] = _k[_t];
 
         __syncthreads();
 
         for (int j = 0; j < N; j++)
         {
-            const float ww = w[j];
-            const float uu = u[j];
+            const float ww = _w[j];
+            const float uu = _u[j];
 
             float x = kk[j] * vv;
 
@@ -47,7 +38,7 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
             yy += rr[j] * (uu * x + s);
             state[j * N + i] = s * ww + x;
         }
-        y[tt] = yy;
+        _y[_t] = yy;
 
         __syncthreads();
     }
