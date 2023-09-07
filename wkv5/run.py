@@ -11,7 +11,7 @@ torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_tf32 = False
 
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 3
+CUDA_KERNEL_VERSION = 4
 
 '''
 python run.py correctness && python run.py benchmark
@@ -95,7 +95,7 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
 ######################################################################################################
 
 if JOB == 'correctness':
-    HEAD_SIZE = 3
+    HEAD_SIZE = 4
 else:
     HEAD_SIZE = 64
 
@@ -154,7 +154,7 @@ def CHECK_CORRECT():
 
     B = 2
     T = 4
-    C = 12
+    C = 16
     H = 4
 
     # B = 1

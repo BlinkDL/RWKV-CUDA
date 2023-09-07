@@ -55,7 +55,7 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
             state[_j].w = s.w * w[_j].w + x.w;
         }
 
-        atomicAdd(&(y[tt]), result.x + result.y + result.z + result.w);
+        y[tt] += result.x + result.y + result.z + result.w;
     }
 }
 
