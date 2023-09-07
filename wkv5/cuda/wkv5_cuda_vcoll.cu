@@ -34,6 +34,8 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
         rr[i] = r[tt + i];
         kk[i] = k[tt + i];
 
+        __syncthreads();
+
         for (int j = 0; j < N; j++)
         {
             const float ww = w[j];
@@ -41,11 +43,13 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
 
             float x = kk[j] * vv;
 
-            float s = state[j];
+            float s = state[j * N + i];
             yy += rr[j] * (uu * x + s);
-            state[j] = s * ww + x;
+            state[j * N + i] = s * ww + x;
         }
         y[tt] = yy;
+
+        __syncthreads();
     }
 }
 
