@@ -10,8 +10,9 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_tf32 = False
 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 3
+CUDA_KERNEL_VERSION = '1b'
 
 '''
 python run.py correctness && python run.py benchmark
@@ -95,13 +96,29 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
 ######################################################################################################
 
 if JOB == 'correctness':
-    HEAD_SIZE = 3
+    # B = 16
+    # T = 4
+    # C = 12
+    # H = 4
+    B = 2
+    T = 4
+    C = 16
+    H = 4
+    # B = 1
+    # T = 2
+    # C = 2
+    # H = 2
+    HEAD_SIZE = C//H
 else:
     HEAD_SIZE = 64
+    B = 8
+    T = 4096
+    C = 4096
+    H = C // HEAD_SIZE    
 
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v{CUDA_KERNEL_VERSION}.cu"],
-                verbose=True, extra_cuda_cflags=["-res-usage", "--maxrregcount 999", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}"])
+                verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DN={HEAD_SIZE}", f"-DCC={C}"])
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
@@ -146,22 +163,6 @@ def RUN_CUDA(B, T, C, H, r, k, v, w, u):
 ######################################################################################################
 
 def CHECK_CORRECT():
-
-    # B = 16
-    # T = 4
-    # C = 12
-    # H = 4
-
-    B = 2
-    T = 4
-    C = 12
-    H = 4
-
-    # B = 1
-    # T = 2
-    # C = 2
-    # H = 2
-
     set_seed(42)
     with torch.no_grad():
         r = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
@@ -183,11 +184,6 @@ def CHECK_CORRECT():
           ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2))
 
 def CHECK_SPEED(silent=False):
-
-    B = 8
-    T = 4096
-    C = 4096
-    H = C // HEAD_SIZE
     print('B', B, 'T', T, 'C', C, 'H', H)
 
     set_seed(42)
