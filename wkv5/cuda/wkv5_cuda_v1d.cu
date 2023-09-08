@@ -16,28 +16,28 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
 
     #pragma unroll
     for (int j = 0; j < N; ++j)
-        state[j*N + i] = 0;
+        state[j*N + i] = 0; // will __syncthreads soon
 
-    for (int _t = b*T*C + h*N + i; _t < (b+1)*T*C + h*N + i; _t += C)
-    {        
+    for (int ti = b*T*C + 0*C + h*N+i; ti < b*T*C + T*C + h*N+i; ti += C)
+    {
         __syncthreads();
-        rr[i] = _r[_t];
-        kk[i] = _k[_t];
+        rr[i] = _r[ti]; // fill rr[0..N]
+        kk[i] = _k[ti]; // fill kk[0..N]
         __syncthreads();
         
-        const float vv = _v[_t];
+        const float vv = _v[ti];
         float yy = 0;
 
         #pragma unroll
         for (int j = 0; j < N; j++)
         {
             float x = kk[j] * vv;
-            float s = state[j*N + i];
+            float s = state[j*N + i]; // much faster than i*N+j
 
             yy += rr[j] * (_u[j] * x + s);
             state[j*N + i] = s * _w[j] + x;
         }
-        _y[_t] = yy;
+        _y[ti] = yy;
     }
 }
 
@@ -52,7 +52,7 @@ __global__ void kernel_backward(const int B, const int T, const int C, const int
 void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *y)
 {
     assert(H*N == C);
-    kernel_forward<<<dim3(B * H), dim3(N)>>>(B, T, C, H, r, k, v, w, u, y);
+    kernel_forward<<<dim3(B*H), dim3(N)>>>(B, T, C, H, r, k, v, w, u, y);
 }
 
 void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
