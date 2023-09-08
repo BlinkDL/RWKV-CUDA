@@ -64,7 +64,7 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
             s3 = s3 * ww.w + x.w;
         }
         y[_tt] = yy;
-        // __syncthreads();
+        __syncthreads();
     }
 }
 
