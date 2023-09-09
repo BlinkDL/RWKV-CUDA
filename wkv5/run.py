@@ -133,9 +133,9 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, _w, u):
     r = r.view(B, T, H, N)
     k = k.view(B, T, H, N)
     v = v.view(B, T, H, N)
-    _w = _w.view(H, N)
+    _w = _w.view(H, N) # _w = -exp(w_original)
     u = u.view(H, N)
-    w = torch.exp(_w)
+    w = torch.exp(_w) # exp again, so w = exp(-exp(w_original))
 
     gr = torch.zeros((B, T, H, N), device=DEVICE)    
     gk = torch.zeros((B, T, H, N), device=DEVICE)
@@ -163,7 +163,7 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, _w, u):
                         gu[h,n] += r[b,t,h,n] * k[b,t,h,n] * v[b,t,h,nn] * gy[b,t,h,nn]
 
                         for tt in range(t-1):
-                            ww = (t-tt-1) * _w[h,n] * (w[h,n] ** (t - tt - 1)) # passing gradient to the "original w" (not the w here)
+                            ww = (t-tt-1) * _w[h,n] * (w[h,n] ** (t - tt - 1)) # we will compute gradient of w_original
                             gw[h,n] += r[b,t,h,n] * ww * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
 
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
