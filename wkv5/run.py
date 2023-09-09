@@ -444,8 +444,8 @@ def CHECK_CORRECT():
             print('--> g_w correct =', torch.allclose(gw0, gw2), ', err ratio =', get_err_ratio(gw0, gw2))
             print('--> g_u correct =', torch.allclose(gu0, gu2), ', err ratio =', get_err_ratio(gu0, gu2))
 
-            print('# Check CUDA Ref')
-            y1 = RUN_CUDA_REF(B, T, C, H, r, k, v, w, u)
+            print('# Check CUDA')
+            y1 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
             LOSS(y1).backward()
 
             gr1 = r.grad.data.clone()
@@ -517,6 +517,9 @@ def CHECK_TORCH():
 def CHECK_SPEED(silent=False):
     print('B', B, 'T', T, 'C', C, 'H', H)
 
+    def LOSS(y): # a strange loss for better verification
+        return ((y * y) - torch.tanh(y)).sum()
+
     set_seed(42)
     with torch.no_grad():
         r = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
@@ -527,6 +530,8 @@ def CHECK_SPEED(silent=False):
 
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
         r = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+        # LOSS(r).backward()
+
     if not silent:
         print('CUDA forward\n', prof.key_averages(group_by_stack_n=5).table(
             sort_by='self_cuda_time_total', row_limit=5))
