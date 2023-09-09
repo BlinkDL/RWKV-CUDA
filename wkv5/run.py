@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '1c'
+CUDA_KERNEL_VERSION = '1'
 
 '''
 python run.py correctness && python run.py correctness_more && python run.py benchmark
@@ -251,6 +251,8 @@ class WKV_5(torch.autograd.Function):
         wkv_cuda.backward(B, T, C, H, r, k, v, w, u, gy.contiguous(), gr, gk, gv, gw, gu)
         gw = torch.sum(gw, dim=0)
         gu = torch.sum(gu, dim=0)
+        gw = gw.reshape(C) 
+        gu = gu.reshape(C)
         return (None, None, None, None, gr, gk, gv, gw, gu)
 
 def RUN_CUDA(B, T, C, H, r, k, v, w, u):
@@ -330,6 +332,30 @@ def CHECK_CORRECT():
             print('--> g_v correct =', torch.allclose(gv0, gv1), ', err ratio =', get_err_ratio(gv0, gv1))
             print('--> g_w correct =', torch.allclose(gw0, gw1), ', err ratio =', get_err_ratio(gw0, gw1))
             print('--> g_u correct =', torch.allclose(gu0, gu1), ', err ratio =', get_err_ratio(gu0, gu1))
+
+            r.grad.zero_()
+            k.grad.zero_()
+            v.grad.zero_() 
+            w.grad.zero_()   
+            u.grad.zero_()
+            y2 = RUN_CUDA(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u) # !!! WE USE DOUBLE EXP HERE !!!
+            LOSS(y2).backward()
+            gr2 = r.grad.data.clone()
+            gk2 = k.grad.data.clone()
+            gv2 = v.grad.data.clone()
+            gw2 = w.grad.data.clone()
+            gu2 = u.grad.data.clone()
+            print(f'g_r2\n{val(gr2)}\n')
+            print(f'g_k2\n{val(gk2)}\n')
+            print(f'g_v2\n{val(gv2)}\n')
+            print(f'g_w2\n{val(gw2)}\n')
+            print(f'g_u2\n{val(gu2)}\n')
+
+            print('--> g_r correct =', torch.allclose(gr0, gr2), ', err ratio =', get_err_ratio(gr0, gr2))
+            print('--> g_k correct =', torch.allclose(gk0, gk2), ', err ratio =', get_err_ratio(gk0, gk2))
+            print('--> g_v correct =', torch.allclose(gv0, gv2), ', err ratio =', get_err_ratio(gv0, gv2))
+            print('--> g_w correct =', torch.allclose(gw0, gw2), ', err ratio =', get_err_ratio(gw0, gw2))
+            print('--> g_u correct =', torch.allclose(gu0, gu2), ', err ratio =', get_err_ratio(gu0, gu2))
 
 
 def CHECK_SPEED(silent=False):

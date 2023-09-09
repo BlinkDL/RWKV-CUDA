@@ -44,7 +44,46 @@ __global__ void kernel_backward(const int B, const int T, const int C, const int
                                 const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ const _w, const F *__restrict__ const _u, const F *__restrict__ const _gy,
                                 F *__restrict__ const _gr, F *__restrict__ const _gk, F *__restrict__ const _gv, F *__restrict__ const _gw, F *__restrict__ const _gu)
 {
-    
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int b = idx / C;
+    const int h = (idx / N) % H;
+    const int n = idx % N;
+
+    for(int t=0; t<T; t++){
+        for (int nn = 0; nn < N; nn++){
+            for(int tt=0; tt <= t; tt++){
+                F ww = (tt == t) ? _u[h*N+n] : pow(_w[h*N+n], t - tt - 1);
+                _gr[b*T*H*N + t*H*N + h*N + n] += ww * _k[b*T*H*N + tt*H*N + h*N + n] *
+                                                _v[b*T*H*N + tt*H*N + h*N + nn] *
+                                                _gy[b*T*H*N + t*H*N + h*N + nn];
+            }
+
+            for(int tt=t; tt < T; tt++){
+                F ww = (tt == t) ? _u[h*N+n] : pow(_w[h*N+n], tt - t - 1);
+                _gk[b*T*H*N + t*H*N + h*N + n] += _r[b*T*H*N + tt*H*N + h*N + n] * ww *
+                                                _v[b*T*H*N + t*H*N + h*N + nn] * 
+                                                _gy[b*T*H*N + tt*H*N + h*N + nn];
+
+                ww = (tt == t) ? _u[h*N+nn] : pow(_w[h*N+nn], tt - t - 1);
+                _gv[b*T*H*N + t*H*N + h*N + n] += _r[b*T*H*N + tt*H*N + h*N + nn] * ww *
+                                                _k[b*T*H*N + t*H*N + h*N + nn] *
+                                                _gy[b*T*H*N + tt*H*N + h*N + n];  
+            }
+
+            atomicAdd(_gu+h*N+n, _r[b*T*H*N + t*H*N + h*N + n] *
+                            _k[b*T*H*N + t*H*N + h*N + n] *
+                            _v[b*T*H*N + t*H*N + h*N + nn] *
+                            _gy[b*T*H*N + t*H*N + h*N + nn]);
+
+            for(int tt=0; tt<t-1; tt++){
+                F ww = (t-tt-1) * log(_w[h*N+n]) * pow(_w[h*N+n], t - tt - 1);
+                atomicAdd(_gw + h*N+n, _r[b*T*H*N + t*H*N + h*N + n] * ww *
+                            _k[b*T*H*N + tt*H*N + h*N + n] *
+                            _v[b*T*H*N + tt*H*N + h*N + nn] *  
+                            _gy[b*T*H*N + t*H*N + h*N + nn]);
+            }
+        }
+    }
 }
 
 void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *y)
