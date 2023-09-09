@@ -13,10 +13,15 @@ torch.backends.cuda.matmul.allow_tf32 = False
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
 CUDA_KERNEL_VERSION = '1'
-
 '''
+cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
+python run.py correctness
 python run.py correctness && python run.py correctness_more && python run.py benchmark
 python run.py backward
+
+python run.py correctness_more && python run.py benchmark
+python run.py benchmark
+python run.py torch
 '''
 JOB = sys.argv[1].strip()
 
@@ -66,6 +71,7 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
     u = u.flatten().contiguous() # HN
     out = torch.zeros(B*T*C, device=DEVICE).contiguous()
 
+    # kernel for v1/v1a/v1b
     for b in range(B):
         for h in range(H):
             state = torch.zeros(N*N, device=DEVICE).contiguous()
@@ -89,6 +95,34 @@ def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
                         
                         out[i] += r[j] * (u[m] * x + s)
                         state[ij] = s * w[m] + x
+
+    # kernel for v1c
+    # for blockIdx in range(B*H):
+    #     b = blockIdx // H
+    #     h = blockIdx % H
+    #     for i in range(N):
+    #         state = torch.empty(N*N, device=DEVICE).contiguous().uniform_(-1, 1)
+    #         rr = torch.empty(N, device=DEVICE).contiguous().uniform_(-1, 1)
+    #         kk = torch.empty(N, device=DEVICE).contiguous().uniform_(-1, 1)
+
+    #         for j in range(N):
+    #             state[j*N + i] = 0
+            
+    #         for _t in range(b*T*C + h*N + i, (b+1)*T*C + h*N + i, C):
+
+    #             for ii in range(N): # emulate __syncthreads()
+    #                 rr[ii] = r[_t - i + ii]
+    #                 kk[ii] = k[_t - i + ii]
+                
+    #             vv = v[_t]
+    #             yy = 0
+    #             for j in range(N):
+    #                 x = kk[j] * vv
+    #                 s = state[j*N + i]
+
+    #                 yy += rr[j] * (u[h*N+j] * x + s)
+    #                 state[j*N + i] = s * w[h*N+j] + x
+    #             out[_t] = yy
 
     return out.view(B, T, C)
 
@@ -134,6 +168,63 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, _w, u):
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
 
 ######################################################################################################
+# Original pytorch version (requires w & u to be constant within each head)
+######################################################################################################
+
+class RUN_TORCH(torch.jit.ScriptModule):
+    def __init__(self, chunk_len):
+        super().__init__()
+        self.chunk_len = chunk_len
+
+    @torch.jit.script_method
+    def jit_func(self, r, k, v, w, wk, wb, ws):
+        B, T, C = r.size()
+        H = w.size()[1]
+        Z = self.chunk_len
+        N = C // H
+        r = r.view(B, T, H, N).transpose(1, 2) # BTC -> BHTN
+        k = k.view(B, T, H, N).transpose(1, 2).transpose(-2, -1) # BTC -> BHTN -> BHNT
+        v = v.view(B, T, H, N).transpose(1, 2) # BTC -> BHTN
+
+        s = torch.zeros(B, H, N, N, device=r.device, dtype=r.dtype) # state
+        x = torch.zeros(B, H, T, N, device=r.device, dtype=r.dtype) # output
+
+        for i in range(T // Z):
+            rr = r[:, :, i*Z:i*Z+Z, :]
+            kk = k[:, :, :, i*Z:i*Z+Z]
+            vv = v[:, :, i*Z:i*Z+Z, :]
+            x[:, :, i*Z:i*Z+Z, :] = ((rr @ kk) * w) @ vv  +  (rr @ s) * wb
+            s = ws * s + (kk * wk) @ vv
+
+        return x.transpose(1, 2).contiguous().view(B, T, C) # BHTN -> BTHN -> BTC
+
+    def forward(self, B, T, C, H, r, k, v, w, u):
+        w = w.view(H, 1)
+        u = u.view(H, 1)
+        Z = self.chunk_len
+
+        ws = w.pow(Z).reshape(1, H, 1, 1)
+
+        ind = torch.arange(Z-1, -1, -1, device=r.device).unsqueeze(0).repeat(H, 1)
+        w = w.repeat(1, Z).pow(ind)
+
+        wk = w.reshape(1, H, 1, Z)
+        wb = wk.transpose(-2, -1).flip(2)
+
+        w = torch.cat([w[:, 1:], u], dim=1)
+        w = F.pad(w, (0, Z))
+        w = torch.tile(w, [Z])
+        w = w[:, :-Z].reshape(-1, Z, 2 * Z - 1)
+        w = w[:, :, Z-1:].reshape(1, H, Z, Z)
+
+        w = w.to(dtype=r.dtype)
+        wk = wk.to(dtype=r.dtype)
+        wb = wb.to(dtype=r.dtype)
+        ws = ws.to(dtype=r.dtype)
+
+        return self.jit_func(r, k, v, w, wk, wb, ws)
+
+######################################################################################################
 # CUDA kernel
 ######################################################################################################
 
@@ -157,11 +248,27 @@ if JOB == 'correctness' or JOB == 'backward':
     # T = 5
     # C = 1
     # HEAD_SIZE = 1
-else:
+
+elif JOB == 'correctness_more':
+    # B = 13
+    # T = 4097
+    # C = 4160
+    # HEAD_SIZE = 64
     B = 8
     T = 4096
     C = 4096
     HEAD_SIZE = 64
+    
+elif JOB == 'benchmark' or JOB == 'torch':
+    B = 8
+    T = 4096
+    C = 4096
+    HEAD_SIZE = 64
+    
+    # B = 1
+    # T = 5
+    # C = 1
+    # HEAD_SIZE = 1
 
 H = C // HEAD_SIZE
 
@@ -259,7 +366,7 @@ def RUN_CUDA(B, T, C, H, r, k, v, w, u):
     return WKV_5.apply(B, T, C, H, r.cuda(), k.cuda(), v.cuda(), w.cuda(), u.cuda())
 
 ######################################################################################################
-# Check correctness & speed benchmark
+# Check correctness
 ######################################################################################################
 
 def CHECK_CORRECT():
@@ -357,6 +464,54 @@ def CHECK_CORRECT():
             print('--> g_w correct =', torch.allclose(gw0, gw2), ', err ratio =', get_err_ratio(gw0, gw2))
             print('--> g_u correct =', torch.allclose(gu0, gu2), ', err ratio =', get_err_ratio(gu0, gu2))
 
+######################################################################################################
+# Check vs pytorch
+######################################################################################################
+
+def CHECK_TORCH():
+
+    set_seed(42)
+    with torch.no_grad():
+        r = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        k = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        v = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        w = torch.zeros(H, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        u = torch.zeros(H, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+    # print(f'r\n{val(r)}\n')
+    # print(f'k\n{val(k)}\n')
+    # print(f'v\n{val(v)}\n')
+    # print(f'w\n{val(w)}\n')
+    # print(f'u\n{val(u)}\n')
+
+    assert T == 4096
+    print(f'B={B} T={T} C={C} HEAD_SIZE={HEAD_SIZE}')
+    
+    rwkv5_torch = RUN_TORCH(chunk_len = 512)
+
+    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, w, u)
+    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, w, u)
+    # print(f'result\n{val(y0)}\n')
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, w, u)
+    print('Torch forward\n', prof.key_averages(group_by_stack_n=5).table(
+        sort_by='self_cuda_time_total', row_limit=5))
+    
+    ww = w.repeat_interleave(HEAD_SIZE)
+    uu = u.repeat_interleave(HEAD_SIZE)
+    y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    # print(f'result\n{val(y1)}\n')f
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    print(f'CUDA kernel v{CUDA_KERNEL_VERSION} forward\n', prof.key_averages(group_by_stack_n=5).table(
+        sort_by='self_cuda_time_total', row_limit=5))
+    
+    print('--> correct =', torch.allclose(y0, y1),
+        ', err ratio =', get_err_ratio(y0, y1))
+
+######################################################################################################
+# Check speed
+######################################################################################################
 
 def CHECK_SPEED(silent=False):
     print('B', B, 'T', T, 'C', C, 'H', H)
@@ -382,8 +537,10 @@ if __name__ == "__main__":
         CHECK_CORRECT()
     elif JOB == 'correctness_more':
         print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness (more)...')
-        CHECK_CORRECT()        
-    else:
+        CHECK_CORRECT()
+    elif JOB == 'benchmark':
         print(f'\n\nCUDA kernel v{CUDA_KERNEL_VERSION} warmup...')
         CHECK_SPEED(silent=True)  # warmup
         CHECK_SPEED()
+    elif JOB == 'torch':
+        CHECK_TORCH()
