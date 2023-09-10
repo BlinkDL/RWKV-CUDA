@@ -244,6 +244,11 @@ if JOB == 'correctness' or JOB == 'backward':
     T = 5
     C = 4
     HEAD_SIZE = 2
+    if JOB == 'backward':
+        B = 2
+        T = 8
+        C = 4
+        HEAD_SIZE = 4
 
     # B = 1
     # T = 5

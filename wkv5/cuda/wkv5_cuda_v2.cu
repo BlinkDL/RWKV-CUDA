@@ -72,35 +72,45 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     const int h = (idx / T / N) % H;
     const int t = (idx / N) % T;
     const int n = idx % N;
+    const int index1 = b*T*H*N + t*H*N + h*N + n;
+    const F& w_h_n = w[h*N+n];
+    F w_pow[4096];
+    for (int t =0;  t < T; t++){
+        w_pow[t] = pow(w_h_n, t);
+    }
     
     for(int nn = 0; nn < N; nn++){
+        const int index2 = b*T*H*N + t*H*N + h*N + nn;
         for (int tt = 0; tt <= t; tt++) {
-            F ww = (tt == t) ? _u[h*N + n] : pow(w[h*N + n], t-tt-1);
+            const int index3 = b*T*H*N + tt*H*N + h*N + n;
+            F ww = (tt == t) ? _u[h*N + n] : (t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w_h_n, t-tt-1));
             
-            gr[b*T*H*N + t*H*N + h*N + n] += ww * k[b*T*H*N + tt*H*N + h*N + n] *
-                v[b*T*H*N + tt*H*N + h*N + nn] * gy[b*T*H*N + t*H*N + h*N + nn];
+            gr[index1] += ww * k[index3] *
+                v[b*T*H*N + tt*H*N + h*N + nn] * gy[index2];
         }
 
         for (int tt = t; tt < T; tt++) {
-            F ww = (tt == t) ? _u[h*N + n] : pow(w[h*N + n], tt-t-1);
+            const int index3 = b*T*H*N + tt*H*N + h*N + n;
+            F ww = (tt == t) ? _u[h*N + n] : (tt-t-1>=0 ? w_pow[tt-t-1] : pow(w_h_n, tt-t-1));
             
-            gk[b*T*H*N + t*H*N + h*N + n] += r[b*T*H*N + tt*H*N + h*N + n] * ww *
-                v[b*T*H*N + t*H*N + h*N + nn] * gy[b*T*H*N + tt*H*N + h*N + nn];
+            gk[index1] += r[index3] * ww *
+                v[index2] * gy[b*T*H*N + tt*H*N + h*N + nn];
 
             ww = (tt == t) ? _u[h*N + nn] : pow(w[h*N + nn], tt-t-1);
             
-            gv[b*T*H*N + t*H*N + h*N + n] += r[b*T*H*N + tt*H*N + h*N + nn] * ww *
-                k[b*T*H*N + t*H*N + h*N + nn] * gy[b*T*H*N + tt*H*N + h*N + n];
+            gv[index1] += r[b*T*H*N + tt*H*N + h*N + nn] * ww *
+                k[index2] * gy[index3];
         }
 
-        atomicAdd(gu + h*N + n, r[b*T*H*N + t*H*N + h*N + n] * k[b*T*H*N + t*H*N + h*N + n] *
-                v[b*T*H*N + t*H*N + h*N + nn] * gy[b*T*H*N + t*H*N + h*N + nn]);
+        atomicAdd(gu + h*N + n, r[index1] * k[index1] *
+                v[index2] * gy[index2]);
 
         for (int tt = 0; tt < t-1; tt++) {
-            F ww = (t-tt-1) * wwww[h*N + n] * pow(w[h*N + n], t-tt-1);
+            const int index3 = b*T*H*N + tt*H*N + h*N + n;
+            F ww = (t-tt-1) * wwww[h*N + n] * (t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w_h_n, t-tt-1));
 
-            atomicAdd(gw + h*N + n, r[b*T*H*N + t*H*N + h*N + n] * ww * k[b*T*H*N + tt*H*N + h*N + n] *
-                v[b*T*H*N + tt*H*N + h*N + nn] * gy[b*T*H*N + t*H*N + h*N + nn]);
+            atomicAdd(gw + h*N + n, r[index1] * ww * k[index3] *
+                v[b*T*H*N + tt*H*N + h*N + nn] * gy[index2]);
         }
     }
 }
