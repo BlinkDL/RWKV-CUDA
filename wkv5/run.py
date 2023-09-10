@@ -19,6 +19,7 @@ cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
 python run.py correctness
 python run.py correctness && python run.py correctness_more && python run.py benchmark
 python run.py backward
+python run.py backward_more
 
 python run.py correctness_more && python run.py benchmark
 python run.py benchmark
@@ -325,7 +326,7 @@ class RUN_TORCH(torch.jit.ScriptModule):
 # CUDA kernel
 ######################################################################################################
 
-if JOB == 'correctness' or JOB == 'backward':
+if JOB == 'correctness':
     # B = 16
     # T = 5
     # C = 16
@@ -340,16 +341,23 @@ if JOB == 'correctness' or JOB == 'backward':
     T = 5
     C = 4
     HEAD_SIZE = 2
-    if JOB == 'backward':
-        B = 2
-        T = 8
-        C = 4
-        HEAD_SIZE = 4
+
+elif JOB == 'backward':
+    B = 2
+    T = 5
+    C = 4
+    HEAD_SIZE = 2
 
     # B = 1
     # T = 5
     # C = 1
     # HEAD_SIZE = 1
+
+elif JOB == 'backward_more':
+    B = 2
+    T = 128
+    C = 128
+    HEAD_SIZE = 64
 
 elif JOB == 'correctness_more':
     # B = 13
@@ -580,6 +588,55 @@ def CHECK_CORRECT():
             print('--> g_w correct =', torch.allclose(gw0, gw1), ', err ratio =', get_err_ratio(gw0, gw1))
             print('--> g_u correct =', torch.allclose(gu0, gu1), ', err ratio =', get_err_ratio(gu0, gu1))
 
+def CHECK_BACKWARD():
+    def LOSS(y): # a strange loss for better verification
+        return ((y * y) - torch.tanh(y)).sum()
+
+    # firstly check vs original cuda
+    set_seed(42)
+    with torch.no_grad():
+        r = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        k = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        v = torch.zeros(B, T, C, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        w = torch.zeros(H, requires_grad=True, device=DEVICE).uniform_(-1, 1)
+        u = torch.zeros(H, requires_grad=True, device=DEVICE).uniform_(-1, 1)    
+    
+    print(f'B={B} T={T} C={C} HEAD_SIZE={HEAD_SIZE}')
+    
+    print('[original torch (const w & u within a head)] vs [current cuda]')
+    rwkv5_torch = RUN_TORCH(chunk_len = T)
+    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
+    
+    ww = w.repeat_interleave(HEAD_SIZE)
+    uu = u.repeat_interleave(HEAD_SIZE)
+    y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    
+    print('--> correct =', torch.allclose(y0, y1),
+        ', err ratio =', get_err_ratio(y0, y1))
+
+    LOSS(y0).backward()
+    gr0 = r.grad.data.clone()
+    gk0 = k.grad.data.clone()
+    gv0 = v.grad.data.clone()
+    gw0 = w.grad.data.clone()
+    gu0 = u.grad.data.clone()
+    r.grad.data.zero_()
+    k.grad.data.zero_()
+    v.grad.data.zero_()
+    w.grad.data.zero_()
+    u.grad.data.zero_()
+    LOSS(y1).backward()
+    gr1 = r.grad.data.clone()
+    gk1 = k.grad.data.clone()
+    gv1 = v.grad.data.clone()
+    gw1 = w.grad.data.clone()
+    gu1 = u.grad.data.clone()            
+    print('--> g_r correct =', torch.allclose(gr0, gr1), ', err ratio =', get_err_ratio(gr0, gr1))
+    print('--> g_k correct =', torch.allclose(gk0, gk1), ', err ratio =', get_err_ratio(gk0, gk1))
+    print('--> g_v correct =', torch.allclose(gv0, gv1), ', err ratio =', get_err_ratio(gv0, gv1))
+    print('--> g_w correct =', torch.allclose(gw0, gw1), ', err ratio =', get_err_ratio(gw0, gw1))
+    print('--> g_u correct =', torch.allclose(gu0, gu1), ', err ratio =', get_err_ratio(gu0, gu1))
+
 ######################################################################################################
 # Check vs pytorch
 ######################################################################################################
@@ -654,7 +711,10 @@ if __name__ == "__main__":
     if JOB == 'correctness' or JOB == 'backward':
         print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness...')
         CHECK_CORRECT()
-    
+
+    elif JOB == 'backward_more':
+        CHECK_BACKWARD()
+
     elif JOB == 'correctness_more':
         print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness (more)...')
         CHECK_CORRECT()
