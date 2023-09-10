@@ -47,37 +47,37 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int b = idx / C;
     const int h = (idx / N) % H;
-    const int n = idx % N;
+    const int i = idx % N;
 
     for (int t = 0; t < T; t++) {
-        for (int nn = 0; nn < N; nn++) {
+        for (int j = 0; j < N; j++) {
             for (int tt = 0; tt <= t; tt++) {
-                F ww = (tt == t) ? _u[h*N + n] : pow(w[h*N + n], t-tt-1);
+                F ww = (tt == t) ? _u[h*N + i] : pow(w[h*N + i], t-tt-1);
                 
-                gr[b*T*H*N + t*H*N + h*N + n] += ww * k[b*T*H*N + tt*H*N + h*N + n] *
-                    v[b*T*H*N + tt*H*N + h*N + nn] * gy[b*T*H*N + t*H*N + h*N + nn];
+                gr[b*T*H*N + t*H*N + h*N + i] += ww * k[b*T*H*N + tt*H*N + h*N + i] *
+                    v[b*T*H*N + tt*H*N + h*N + j] * gy[b*T*H*N + t*H*N + h*N + j];
             }
 
             for (int tt = t; tt < T; tt++) {
-                F ww = (tt == t) ? _u[h*N + n] : pow(w[h*N + n], tt-t-1);
+                F ww = (tt == t) ? _u[h*N + i] : pow(w[h*N + i], tt-t-1);
                 
-                gk[b*T*H*N + t*H*N + h*N + n] += r[b*T*H*N + tt*H*N + h*N + n] * ww *
-                    v[b*T*H*N + t*H*N + h*N + nn] * gy[b*T*H*N + tt*H*N + h*N + nn];
+                gk[b*T*H*N + t*H*N + h*N + i] += r[b*T*H*N + tt*H*N + h*N + i] * ww *
+                    v[b*T*H*N + t*H*N + h*N + j] * gy[b*T*H*N + tt*H*N + h*N + j];
 
-                ww = (tt == t) ? _u[h*N + nn] : pow(w[h*N + nn], tt-t-1);
+                ww = (tt == t) ? _u[h*N + j] : pow(w[h*N + j], tt-t-1);
                 
-                gv[b*T*H*N + t*H*N + h*N + n] += r[b*T*H*N + tt*H*N + h*N + nn] * ww *
-                    k[b*T*H*N + t*H*N + h*N + nn] * gy[b*T*H*N + tt*H*N + h*N + n];
+                gv[b*T*H*N + t*H*N + h*N + i] += r[b*T*H*N + tt*H*N + h*N + j] * ww *
+                    k[b*T*H*N + t*H*N + h*N + j] * gy[b*T*H*N + tt*H*N + h*N + i];
             }
 
-            atomicAdd(gu + h*N + n, r[b*T*H*N + t*H*N + h*N + n] * k[b*T*H*N + t*H*N + h*N + n] *
-                    v[b*T*H*N + t*H*N + h*N + nn] * gy[b*T*H*N + t*H*N + h*N + nn]);
+            atomicAdd(gu + h*N + i, r[b*T*H*N + t*H*N + h*N + i] * k[b*T*H*N + t*H*N + h*N + i] *
+                    v[b*T*H*N + t*H*N + h*N + j] * gy[b*T*H*N + t*H*N + h*N + j]);
 
             for (int tt = 0; tt < t-1; tt++) {
-                F ww = (t-tt-1) * wwww[h*N + n] * pow(w[h*N + n], t-tt-1);
+                F ww = (t-tt-1) * wwww[h*N + i] * pow(w[h*N + i], t-tt-1);
 
-                atomicAdd(gw + h*N + n, r[b*T*H*N + t*H*N + h*N + n] * ww * k[b*T*H*N + tt*H*N + h*N + n] *
-                    v[b*T*H*N + tt*H*N + h*N + nn] * gy[b*T*H*N + t*H*N + h*N + nn]);
+                atomicAdd(gw + h*N + i, r[b*T*H*N + t*H*N + h*N + i] * ww * k[b*T*H*N + tt*H*N + h*N + i] *
+                    v[b*T*H*N + tt*H*N + h*N + j] * gy[b*T*H*N + t*H*N + h*N + j]);
             }
         }
     }

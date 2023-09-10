@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '2'
+CUDA_KERNEL_VERSION = '1'
 
 '''
 cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
@@ -55,11 +55,22 @@ def RUN_FORMULA_1(B, T, C, H, r, k, v, w, u):
     for b in range(B):
         for h in range(H):
             for t in range(T):
-                for n in range(N):
-                    for nn in range(N):
+                for i in range(N):
+                    for j in range(N):
                         for tt in range(t+1):
-                            ww = u[h,nn] if (tt == t) else w[h,nn] ** (t - tt - 1)
-                            out[b,t,h,n] += r[b,t,h,nn] * ww * k[b,tt,h,nn] * v[b,tt,h,n]
+                            ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
+                            out[b,t,h,i] += r[b,t,h,j] * ww * k[b,tt,h,j] * v[b,tt,h,i]
+
+    # for b in range(B):
+    #     for h in range(H):
+    #         state = torch.zeros((N,N), device=DEVICE).contiguous()
+    #         for t in range(T):
+    #             for i in range(N):
+    #                 for j in range(N):
+    #                     x = k[b,t,h,j] * v[b,t,h,i]
+    #                     s = state[i,j]
+    #                     out[b,t,h,i] += r[b,t,h,j] * (u[h,j] * x + s)
+    #                     state[i,j] = s * w[h,j] + x
 
     return out.view(B, T, C)
 
@@ -137,7 +148,7 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, __w, u):
     u = u.view(H, N)
     w = torch.exp(_w)
 
-    gr = torch.zeros((B, T, H, N), device=DEVICE)    
+    gr = torch.zeros((B, T, H, N), device=DEVICE)
     gk = torch.zeros((B, T, H, N), device=DEVICE)
     gv = torch.zeros((B, T, H, N), device=DEVICE)
     gw = torch.zeros((H, N), device=DEVICE)
@@ -145,28 +156,49 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, __w, u):
 
     for b in range(B):
         for h in range(H):
-            for n in range(N):
+            for i in range(N):
                 for t in range(T):
-                    for nn in range(N):
+                    for j in range(N):
 
                         for tt in range(t+1):
-                            ww = u[h,n] if (tt == t) else w[h,n] ** (t - tt - 1)
-                            gr[b,t,h,n] += ww * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
+                            ww = u[h,i] if (tt == t) else w[h,i] ** (t - tt - 1)
+                            gr[b,t,h,i] += ww * k[b,tt,h,i] * v[b,tt,h,j] * gy[b,t,h,j]
 
                         for tt in range(t,T):
-                            ww = u[h,n] if (tt == t) else w[h,n] ** (tt - t - 1)
-                            gk[b,t,h,n] += r[b,tt,h,n] * ww * v[b,t,h,nn] * gy[b,tt,h,nn]
+                            ww = u[h,i] if (tt == t) else w[h,i] ** (tt - t - 1)
+                            gk[b,t,h,i] += r[b,tt,h,i] * ww * v[b,t,h,j] * gy[b,tt,h,j]
 
-                            ww = u[h,nn] if (tt == t) else w[h,nn] ** (tt - t - 1)
-                            gv[b,t,h,n] += r[b,tt,h,nn] * ww * k[b,t,h,nn] * gy[b,tt,h,n]
+                            ww = u[h,j] if (tt == t) else w[h,j] ** (tt - t - 1)
+                            gv[b,t,h,i] += r[b,tt,h,j] * ww * k[b,t,h,j] * gy[b,tt,h,i]
 
-                        gu[h,n] += r[b,t,h,n] * k[b,t,h,n] * v[b,t,h,nn] * gy[b,t,h,nn]
+                        gu[h,i] += r[b,t,h,i] * k[b,t,h,i] * v[b,t,h,j] * gy[b,t,h,j]
 
                         for tt in range(t-1):
-                            ww = (t-tt-1) * _w[h,n] * (w[h,n] ** (t - tt - 1))
-                            gw[h,n] += r[b,t,h,n] * ww * k[b,tt,h,n] * v[b,tt,h,nn] * gy[b,t,h,nn]
+                            ww = (t-tt-1) * _w[h,i] * (w[h,i] ** (t - tt - 1))
+                            gw[h,i] += r[b,t,h,i] * ww * k[b,tt,h,i] * v[b,tt,h,j] * gy[b,t,h,j]
 
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
+
+def RUN_BACKWARD_2(B, T, C, H, gy, r, k, v, __w, u):
+    N = C // H
+    r = r.flatten().contiguous() # BTHN
+    k = k.flatten().contiguous() # BTHN
+    v = v.flatten().contiguous() # BTHN
+    __w = __w.flatten().contiguous() # HN
+    u = u.flatten().contiguous() # HN
+    gr = torch.zeros(B*T*C, device=DEVICE).contiguous()
+    gk = torch.zeros(B*T*C, device=DEVICE).contiguous()
+    gv = torch.zeros(B*T*C, device=DEVICE).contiguous()
+    gw = torch.zeros(B*C, device=DEVICE).contiguous()
+    gu = torch.zeros(B*C, device=DEVICE).contiguous()
+    _w = -torch.exp(__w)
+    w = torch.exp(_w)
+
+
+
+    gw = torch.sum(gw.view(B,C), dim=0).flatten()
+    gu = torch.sum(gu.view(B,C), dim=0).flatten()
+    return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)    
 
 ######################################################################################################
 # Original pytorch version (requires w & u to be constant within each head)
@@ -449,6 +481,7 @@ def CHECK_CORRECT():
             
             print('# Check torch ref')
             gr2, gk2, gv2, gw2, gu2 = RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u)
+            # gr2, gk2, gv2, gw2, gu2 = RUN_BACKWARD_2(B, T, C, H, gy, r, k, v, w, u)
             print('--> g_r correct =', torch.allclose(gr0, gr2), ', err ratio =', get_err_ratio(gr0, gr2))
             print('--> g_k correct =', torch.allclose(gk0, gk2), ', err ratio =', get_err_ratio(gk0, gk2))
             print('--> g_v correct =', torch.allclose(gv0, gv2), ', err ratio =', get_err_ratio(gv0, gv2))
@@ -500,11 +533,11 @@ def CHECK_TORCH():
     
     rwkv5_torch = RUN_TORCH(chunk_len = 512)
 
-    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, w, u)
-    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, w, u)
+    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
+    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
     # print(f'result\n{val(y0)}\n')
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
-        y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, w, u)
+        y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
     print('Torch forward\n', prof.key_averages(group_by_stack_n=5).table(
         sort_by='self_cuda_time_total', row_limit=5))
     
