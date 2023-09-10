@@ -75,6 +75,8 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     const int index1 = b*T*H*N + t*H*N + h*N + n;
     const F& w_h_n = w[h*N+n];
     const F& u_h_n = _u[h*N+n];
+    F& gu_h_n = gu[h*N+n];
+    F& gw_h_n = gw[h*N+n];
     F w_pow[4096];
     for (int t =0;  t < T; t++){
         w_pow[t] = pow(w_h_n, t);
@@ -85,17 +87,6 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     const F& r_index1 = r[index1];
     const F& k_index1 = k[index1];
 
-    // __shared__ F s_w[H*N];
-    // __shared__ F s_gw[H*N]; 
-    // __shared__ F s_gu[H*N];
-
-    // if(threadIdx.x < H*N) {
-    //     s_w[threadIdx.x] = w[threadIdx.x];
-    //     s_gw[threadIdx.x] = 0; 
-    //     s_gu[threadIdx.x] = 0;
-    // } 
-    // __syncthreads();
-    
     for(int nn = 0; nn < N; nn++){
         const F& u_h_nn = _u[h*N + nn];
         const F& w_h_nn = w[h*N + nn];
@@ -104,26 +95,26 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
             const int index3 = b*T*H*N + tt*H*N + h*N + n;
             const int index4 = b*T*H*N + tt*H*N + h*N + nn;
             F ww = (tt == t) ? u_h_n : (t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w_h_n, t-tt-1));
-            gr_index1 += ww * k[index3] * v[index4] * gy[index2];
+            gr_index1 += ww * gy[index2] * k[index3] * v[index4];
         }
 
         for (int tt = t; tt < T; tt++) {
             const int index3 = b*T*H*N + tt*H*N + h*N + n;
             const int index4 = b*T*H*N + tt*H*N + h*N + nn;
             F ww = (tt == t) ? u_h_n : (tt-t-1>=0 ? w_pow[tt-t-1] : pow(w_h_n, tt-t-1));
-            gk_index1 += r[index3] * ww * v[index2] * gy[index4];
+            gk_index1 += ww * v[index2] * r[index3] *  gy[index4];
             ww = (tt == t) ? u_h_nn : pow(w_h_nn, tt-t-1);
-            gv_index1 += r[index4] * ww * k[index2] * gy[index3];
+            gv_index1 += ww * k[index2] * gy[index3] * r[index4];
         }
 
-        atomicAdd(gu + h*N + n, r_index1 * k_index1 * v[index2] * gy[index2]);
+        atomicAdd(&gu_h_n, r_index1 * k_index1 * v[index2] * gy[index2]);
 
         for (int tt = 0; tt < t-1; tt++) {
             const int index3 = b*T*H*N + tt*H*N + h*N + n;
             const int index4 = b*T*H*N + tt*H*N + h*N + nn;
             F ww = (t-tt-1) * wwww[h*N + n] * (t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w_h_n, t-tt-1));
 
-            atomicAdd(gw + h*N + n, r_index1 * ww * k[index3] * v[index4] * gy[index2]);
+            atomicAdd(&gw_h_n, r_index1 * ww * k[index3] * v[index4] * gy[index2]);
         }
     }
 }
