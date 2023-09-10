@@ -53,6 +53,7 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
 
     __shared__ float state[N * N], vv[N], gyy[N];
 
+    #pragma unroll
     for (int j = 0; j < N; ++j)
         state[j * N + i] = 0;
     
@@ -71,6 +72,7 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
 
         __syncthreads();
 
+        #pragma unroll
         for (int j = 0; j < N; j++)
         {
 
@@ -84,6 +86,34 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
         gr[_t] = grr;
         atomicAdd(gu + i, guu);
 
+        __syncthreads();
+    }
+
+    #pragma unroll
+    for (int j = 0; j < N; ++j)
+        state[j * N + i] = 0;
+    
+    for (int _t = (b+1)*T*C + h*N + i - N, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
+    {
+        const F rr = r[_t];
+        F gkk = 0;
+
+        vv[i] = v[_t];
+        gyy[i] = gy[_t];
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
+
+            float x = gyy[j] * rr;
+            float s = state[j * N + i];
+
+            gkk += vv[j] * (uu * x + s);
+            state[j * N + i] = s * ww + x;
+        }
+        gk[_t] = gkk;
         __syncthreads();
     }
 }
