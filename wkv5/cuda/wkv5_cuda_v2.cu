@@ -117,7 +117,7 @@ void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, floa
 
 void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *ww, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
 {
-    dim3 threadsPerBlock( min(B*H*T*N, 256) );
+    dim3 threadsPerBlock( min(B*H*T*N, 32) );
     assert(B * H * T * N % threadsPerBlock.x == 0);
     dim3 numBlocks(B * H * T * N / threadsPerBlock.x);
     kernel_backward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, ww, u, gy, gr, gk, gv, gw, gu);
