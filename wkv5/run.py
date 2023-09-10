@@ -208,35 +208,40 @@ def RUN_BACKWARD_1A(B, T, C, H, gy, r, k, v, __w, u):
 
     for b in range(B):
         for h in range(H):
-
-            state = torch.zeros((N,N), device=DEVICE).contiguous()
             for i in range(N):
+
+                state = torch.zeros(N, device=DEVICE).contiguous()
+                saaaa = torch.zeros(N, device=DEVICE).contiguous()
+                sbbbb = torch.zeros(N, device=DEVICE).contiguous()
                 for t in range(T):
                     for j in range(N):
                         x = k[b,t,h,i] * v[b,t,h,j]
-                        s = state[i,j]
+                        s = state[j]
                         gr[b,t,h,i] += gy[b,t,h,j] * (u[h,i] * x + s)
-                        state[i,j] = s * w[h,i] + x
+                        state[j] = s * w[h,i] + x
 
                         gu[h,i] += r[b,t,h,i] * x * gy[b,t,h,j]
-            
-            state *= 0
-            for i in range(N):
+
+                        if t < T-2:
+                            saaaa[j] = w[h,i] * (saaaa[j] + sbbbb[j] + x)
+                            sbbbb[j] = w[h,i] * (sbbbb[j] + x)
+                            gw[h,i] += r[b,t+2,h,i] * _w[h,i] * saaaa[j] * gy[b,t+2,h,j]
+
+                state = torch.zeros(N, device=DEVICE).contiguous()
                 for t in range(T-1,-1,-1):
                     for j in range(N):
                         x = r[b,t,h,i] * gy[b,t,h,j]
-                        s = state[i,j]
+                        s = state[j]
                         gk[b,t,h,i] += v[b,t,h,j] * (u[h,i] * x + s)
-                        state[i,j] = s * w[h,i] + x
+                        state[j] = s * w[h,i] + x
  
-            state *= 0
-            for i in range(N):
+                state = torch.zeros(N, device=DEVICE).contiguous()
                 for t in range(T-1,-1,-1):
                     for j in range(N):
                         x = gy[b,t,h,i] * r[b,t,h,j]
-                        s = state[i,j]
+                        s = state[j]
                         gv[b,t,h,i] += k[b,t,h,j] * (u[h,j] * x + s)
-                        state[i,j] = s * w[h,j] + x
+                        state[j] = s * w[h,j] + x
 
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
 
