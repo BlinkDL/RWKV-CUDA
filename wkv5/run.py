@@ -271,6 +271,12 @@ elif JOB == 'benchmark' or JOB == 'torch':
     # C = 1
     # HEAD_SIZE = 1
 
+elif JOB == "benchmark_backward":
+    B = 8
+    T = 512
+    C = 512
+    HEAD_SIZE = 64
+
 H = C // HEAD_SIZE
 
 ######################################################################################################
@@ -514,11 +520,8 @@ def CHECK_TORCH():
 # Check speed
 ######################################################################################################
 
-def CHECK_SPEED(silent=False):
+def CHECK_SPEED(silent=False, backward=False):
     print('B', B, 'T', T, 'C', C, 'H', H)
-
-    def LOSS(y): # a strange loss for better verification
-        return ((y * y) - torch.tanh(y)).sum()
 
     set_seed(42)
     with torch.no_grad():
@@ -530,7 +533,8 @@ def CHECK_SPEED(silent=False):
 
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
         r = RUN_CUDA(B, T, C, H, r, k, v, w, u)
-        # LOSS(r).backward()
+        if backward:
+            r.sum().backward()
 
     if not silent:
         print('CUDA forward\n', prof.key_averages(group_by_stack_n=5).table(
@@ -546,10 +550,14 @@ if __name__ == "__main__":
         print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness (more)...')
         CHECK_CORRECT()
     
-    elif JOB == 'benchmark':
+    elif JOB == 'benchmark' or JOB == "benchmark_backward":
         print(f'\n\nCUDA kernel v{CUDA_KERNEL_VERSION} warmup...')
-        CHECK_SPEED(silent=True)  # warmup
-        CHECK_SPEED()
+        if JOB == "benchmark_backward":
+            backward = True
+        else:
+            backward = False
+        CHECK_SPEED(silent=True, backward=backward)  # warmup
+        CHECK_SPEED(backward=backward)
     
     elif JOB == 'torch':
         CHECK_TORCH()

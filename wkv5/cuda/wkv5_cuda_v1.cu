@@ -48,6 +48,14 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     const int b = idx / C;
     const int h = (idx / N) % H;
     const int n = idx % N;
+    
+    const F u1 = _u[h*N + n];
+    const F w1 = w[h*N + n];
+    const F wwww1 = wwww[h*N + n];
+    F w_pow[4096] = {0.0f};
+    for (int t =0;  t < T; t++){
+        w_pow[t] = pow(w1, t);
+    }
 
     for (int t = 0; t < T; t++) {
         const int index1 = b*T*H*N + t*H*N + h*N;
@@ -61,14 +69,16 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
 
         for (int nn = 0; nn < N; nn++) {
             for (int tt = 0; tt <= t; tt++) {
-                F ww = (tt == t) ? _u[h*N + n] : pow(w[h*N + n], t-tt-1);
+                F w_pow_1 = t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w1, t-tt-1);
+                F ww = (tt == t) ? u1 : w_pow_1;
                 
                 gr1[n] += ww * k[b*T*H*N + tt*H*N + h*N + n] *
                     v[b*T*H*N + tt*H*N + h*N + nn] * gy1[nn];
             }
 
             for (int tt = t; tt < T; tt++) {
-                F ww = (tt == t) ? _u[h*N + n] : pow(w[h*N + n], tt-t-1);
+                F w_pow_1 = tt-t-1 >= 0 ? w_pow[tt-t-1] : pow(w1, tt-t-1);
+                F ww = (tt == t) ? u1 : w_pow_1;
                 
                 gk1[n] += r[b*T*H*N + tt*H*N + h*N + n] * ww *
                     v1[nn] * gy[b*T*H*N + tt*H*N + h*N + nn];
@@ -83,7 +93,8 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
                     v1[nn] * gy1[nn]);
 
             for (int tt = 0; tt < t-1; tt++) {
-                F ww = (t-tt-1) * wwww[h*N + n] * pow(w[h*N + n], t-tt-1);
+                F w_pow_1 = t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w1, t-tt-1);
+                F ww = (t-tt-1) * wwww1 * w_pow_1;
 
                 atomicAdd(gw + h*N + n, r1[n] * ww * k[b*T*H*N + tt*H*N + h*N + n] *
                     v[b*T*H*N + tt*H*N + h*N + nn] * gy1[nn]);
