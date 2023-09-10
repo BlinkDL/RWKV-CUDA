@@ -61,16 +61,27 @@ def RUN_FORMULA_1(B, T, C, H, r, k, v, w, u):
                             ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
                             out[b,t,h,i] += r[b,t,h,j] * ww * k[b,tt,h,j] * v[b,tt,h,i]
 
-    # for b in range(B):
-    #     for h in range(H):
-    #         state = torch.zeros((N,N), device=DEVICE).contiguous()
-    #         for t in range(T):
-    #             for i in range(N):
-    #                 for j in range(N):
-    #                     x = k[b,t,h,j] * v[b,t,h,i]
-    #                     s = state[i,j]
-    #                     out[b,t,h,i] += r[b,t,h,j] * (u[h,j] * x + s)
-    #                     state[i,j] = s * w[h,j] + x
+    return out.view(B, T, C)
+
+def RUN_FORMULA_1A(B, T, C, H, r, k, v, w, u):
+    N = C // H
+    r = r.view(B, T, H, N)
+    k = k.view(B, T, H, N)
+    v = v.view(B, T, H, N)
+    w = w.view(H, N)
+    u = u.view(H, N)
+    out = torch.zeros((B, T, H, N), device=DEVICE)
+
+    for b in range(B):
+        for h in range(H):
+            state = torch.zeros((N,N), device=DEVICE).contiguous()
+            for t in range(T):
+                for i in range(N):
+                    for j in range(N):
+                        x = k[b,t,h,j] * v[b,t,h,i]
+                        s = state[i,j]
+                        out[b,t,h,i] += r[b,t,h,j] * (u[h,j] * x + s)
+                        state[i,j] = s * w[h,j] + x
 
     return out.view(B, T, C)
 
@@ -179,26 +190,74 @@ def RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, __w, u):
 
     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
 
-def RUN_BACKWARD_2(B, T, C, H, gy, r, k, v, __w, u):
+def RUN_BACKWARD_1A(B, T, C, H, gy, r, k, v, __w, u):
     N = C // H
-    r = r.flatten().contiguous() # BTHN
-    k = k.flatten().contiguous() # BTHN
-    v = v.flatten().contiguous() # BTHN
-    __w = __w.flatten().contiguous() # HN
-    u = u.flatten().contiguous() # HN
-    gr = torch.zeros(B*T*C, device=DEVICE).contiguous()
-    gk = torch.zeros(B*T*C, device=DEVICE).contiguous()
-    gv = torch.zeros(B*T*C, device=DEVICE).contiguous()
-    gw = torch.zeros(B*C, device=DEVICE).contiguous()
-    gu = torch.zeros(B*C, device=DEVICE).contiguous()
-    _w = -torch.exp(__w)
+    gy = gy.view(B, T, H, N)
+    r = r.view(B, T, H, N)
+    k = k.view(B, T, H, N)
+    v = v.view(B, T, H, N)
+    _w = -torch.exp(__w).view(H, N)
+    u = u.view(H, N)
     w = torch.exp(_w)
 
+    gr = torch.zeros((B, T, H, N), device=DEVICE)
+    gk = torch.zeros((B, T, H, N), device=DEVICE)
+    gv = torch.zeros((B, T, H, N), device=DEVICE)
+    gw = torch.zeros((H, N), device=DEVICE)
+    gu = torch.zeros((H, N), device=DEVICE)
 
+    for b in range(B):
+        for h in range(H):
 
-    gw = torch.sum(gw.view(B,C), dim=0).flatten()
-    gu = torch.sum(gu.view(B,C), dim=0).flatten()
-    return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)    
+            state = torch.zeros((N,N), device=DEVICE).contiguous()
+            for i in range(N):
+                for t in range(T):
+                    for j in range(N):
+                        x = k[b,t,h,i] * v[b,t,h,j]
+                        s = state[i,j]
+                        gr[b,t,h,i] += gy[b,t,h,j] * (u[h,i] * x + s)
+                        state[i,j] = s * w[h,i] + x
+
+                        gu[h,i] += r[b,t,h,i] * x * gy[b,t,h,j]
+            
+            state *= 0
+            for i in range(N):
+                for t in range(T-1,-1,-1):
+                    for j in range(N):
+                        x = r[b,t,h,i] * gy[b,t,h,j]
+                        s = state[i,j]
+                        gk[b,t,h,i] += v[b,t,h,j] * (u[h,i] * x + s)
+                        state[i,j] = s * w[h,i] + x
+ 
+            state *= 0
+            for i in range(N):
+                for t in range(T-1,-1,-1):
+                    for j in range(N):
+                        x = gy[b,t,h,i] * r[b,t,h,j]
+                        s = state[i,j]
+                        gv[b,t,h,i] += k[b,t,h,j] * (u[h,j] * x + s)
+                        state[i,j] = s * w[h,j] + x
+
+    return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)
+
+# def RUN_BACKWARD_2(B, T, C, H, gy, r, k, v, __w, u):
+#     N = C // H
+#     r = r.flatten().contiguous() # BTHN
+#     k = k.flatten().contiguous() # BTHN
+#     v = v.flatten().contiguous() # BTHN
+#     __w = __w.flatten().contiguous() # HN
+#     u = u.flatten().contiguous() # HN
+#     gr = torch.zeros(B*T*C, device=DEVICE).contiguous()
+#     gk = torch.zeros(B*T*C, device=DEVICE).contiguous()
+#     gv = torch.zeros(B*T*C, device=DEVICE).contiguous()
+#     gw = torch.zeros(B*C, device=DEVICE).contiguous()
+#     gu = torch.zeros(B*C, device=DEVICE).contiguous()
+#     _w = -torch.exp(__w)
+#     w = torch.exp(_w)
+
+#     gw = torch.sum(gw.view(B,C), dim=0).flatten()
+#     gu = torch.sum(gu.view(B,C), dim=0).flatten()
+#     return gr.view(B, T, C), gk.view(B, T, C), gv.view(B, T, C), gw.view(C), gu.view(C)    
 
 ######################################################################################################
 # Original pytorch version (requires w & u to be constant within each head)
@@ -479,9 +538,16 @@ def CHECK_CORRECT():
             w.grad.data.zero_()
             u.grad.data.zero_()
             
-            print('# Check torch ref')
+            print('# Check ref 1')
             gr2, gk2, gv2, gw2, gu2 = RUN_BACKWARD_1(B, T, C, H, gy, r, k, v, w, u)
-            # gr2, gk2, gv2, gw2, gu2 = RUN_BACKWARD_2(B, T, C, H, gy, r, k, v, w, u)
+            print('--> g_r correct =', torch.allclose(gr0, gr2), ', err ratio =', get_err_ratio(gr0, gr2))
+            print('--> g_k correct =', torch.allclose(gk0, gk2), ', err ratio =', get_err_ratio(gk0, gk2))
+            print('--> g_v correct =', torch.allclose(gv0, gv2), ', err ratio =', get_err_ratio(gv0, gv2))
+            print('--> g_w correct =', torch.allclose(gw0, gw2), ', err ratio =', get_err_ratio(gw0, gw2))
+            print('--> g_u correct =', torch.allclose(gu0, gu2), ', err ratio =', get_err_ratio(gu0, gu2))
+
+            print('# Check ref 1a')
+            gr2, gk2, gv2, gw2, gu2 = RUN_BACKWARD_1A(B, T, C, H, gy, r, k, v, w, u)
             print('--> g_r correct =', torch.allclose(gr0, gr2), ', err ratio =', get_err_ratio(gr0, gr2))
             print('--> g_k correct =', torch.allclose(gk0, gk2), ', err ratio =', get_err_ratio(gk0, gk2))
             print('--> g_v correct =', torch.allclose(gv0, gv2), ', err ratio =', get_err_ratio(gv0, gv2))
