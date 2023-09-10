@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '1'
+CUDA_KERNEL_VERSION = '2'
 
 '''
 cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
@@ -244,6 +244,11 @@ if JOB == 'correctness' or JOB == 'backward':
     T = 5
     C = 4
     HEAD_SIZE = 2
+    if JOB == 'backward':
+        B = 2
+        T = 8
+        C = 4
+        HEAD_SIZE = 4
 
     # B = 1
     # T = 5
@@ -270,6 +275,12 @@ elif JOB == 'benchmark' or JOB == 'torch':
     # T = 5
     # C = 1
     # HEAD_SIZE = 1
+
+elif JOB == "benchmark_backward":
+    B = 8
+    T = 512
+    C = 512
+    HEAD_SIZE = 64
 
 H = C // HEAD_SIZE
 
@@ -444,8 +455,8 @@ def CHECK_CORRECT():
             print('--> g_w correct =', torch.allclose(gw0, gw2), ', err ratio =', get_err_ratio(gw0, gw2))
             print('--> g_u correct =', torch.allclose(gu0, gu2), ', err ratio =', get_err_ratio(gu0, gu2))
 
-            print('# Check CUDA Ref')
-            y1 = RUN_CUDA_REF(B, T, C, H, r, k, v, w, u)
+            print('# Check CUDA')
+            y1 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
             LOSS(y1).backward()
 
             gr1 = r.grad.data.clone()
@@ -514,7 +525,7 @@ def CHECK_TORCH():
 # Check speed
 ######################################################################################################
 
-def CHECK_SPEED(silent=False):
+def CHECK_SPEED(silent=False, backward=False):
     print('B', B, 'T', T, 'C', C, 'H', H)
 
     set_seed(42)
@@ -527,6 +538,9 @@ def CHECK_SPEED(silent=False):
 
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
         r = RUN_CUDA(B, T, C, H, r, k, v, w, u)
+        if backward:
+            r.sum().backward()
+
     if not silent:
         print('CUDA forward\n', prof.key_averages(group_by_stack_n=5).table(
             sort_by='self_cuda_time_total', row_limit=5))
@@ -541,10 +555,14 @@ if __name__ == "__main__":
         print(f'\n\nCheck CUDA kernel v{CUDA_KERNEL_VERSION} correctness (more)...')
         CHECK_CORRECT()
     
-    elif JOB == 'benchmark':
+    elif JOB == 'benchmark' or JOB == "benchmark_backward":
         print(f'\n\nCUDA kernel v{CUDA_KERNEL_VERSION} warmup...')
-        CHECK_SPEED(silent=True)  # warmup
-        CHECK_SPEED()
+        if JOB == "benchmark_backward":
+            backward = True
+        else:
+            backward = False
+        CHECK_SPEED(silent=True, backward=backward)  # warmup
+        CHECK_SPEED(backward=backward)
     
     elif JOB == 'torch':
         CHECK_TORCH()
