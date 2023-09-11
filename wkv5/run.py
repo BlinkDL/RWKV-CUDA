@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '1'
+CUDA_KERNEL_VERSION = '1e'
 
 '''
 cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
@@ -382,8 +382,8 @@ elif JOB == 'benchmark' or JOB == 'torch':
 
 elif JOB == "benchmark_backward":
     B = 8
-    T = 512
-    C = 512
+    T = 4096
+    C = 4096
     HEAD_SIZE = 64
 
 H = C // HEAD_SIZE

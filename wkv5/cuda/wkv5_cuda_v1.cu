@@ -41,65 +41,129 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
 
 template <typename F>
 __global__ void kernel_backward (const int B, const int T, const int C, const int H,
-    const F *__restrict__ const r, const F *__restrict__ const k, const F *__restrict__ const v, const F *__restrict__ const w, const F *__restrict__ const wwww, const F *__restrict__ const _u, const F *__restrict__ const gy,
-    F *__restrict__ const gr, F *__restrict__ const gk, F *__restrict__ const gv, F *__restrict__ const gw, F *__restrict__ const gu)
+    const F *__restrict__ const r, const F *__restrict__ const k, const F *__restrict__ const v, const F *__restrict__ w, const F *__restrict__ wwww, const F *__restrict__ u, const F *__restrict__ const gy,
+    F *__restrict__ const gr, F *__restrict__ const gk, F *__restrict__ const gv, F *__restrict__ gw, F *__restrict__ gu)
 {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int b = idx / C;
-    const int h = (idx / N) % H;
-    const int n = idx % N;
+    const int b = blockIdx.x / H;
+    const int h = blockIdx.x % H;
+    const int i = threadIdx.x;
+    w += h*N;
+    u += h*N;
+    gu += h*N;
+    gw += h*N;
+    wwww += h*N;
+
+    __shared__ float state[N * N], vv[N], rr[N], kk[N], gyy[N];
+
+    #pragma unroll
+    for (int j = 0; j < N; ++j){
+        state[j * N + i] = 0;
+    }
     
-    const F u1 = _u[h*N + n];
-    const F w1 = w[h*N + n];
-    const F wwww1 = wwww[h*N + n];
-    F w_pow[4096] = {0.0f};
-    for (int t =0;  t < T; t++){
-        w_pow[t] = pow(w1, t);
+    const float ww = w[i];
+    const float uu = u[i];
+    const float wwwww = wwww[i];
+    float saaaa[N] = {0.0f}, sbbbb[N] = {0.0f};
+
+    for (int _t = b*T*C + h*N + i, _tend = (b+1)*T*C + h*N + i; _t < _tend; _t += C)
+    {
+        const F kk = k[_t];
+        const F rr = r[_t];
+        F grr = 0;
+        F guu = 0;
+
+        vv[i] = v[_t];
+        gyy[i] = gy[_t];
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
+
+            float x = vv[j] * kk;
+            float s = state[j * N + i];
+
+            grr += gyy[j] * (uu * x + s);
+            state[j * N + i] = s * ww + x;
+            guu += rr * x * gyy[j];
+
+        }
+        gr[_t] = grr;
+        atomicAdd(gu + i, guu);
+
+        __syncthreads();
+        if (_t < _tend - 2 * C){
+            const F rr_value = r[_t+2*C];
+            gyy[i] = gy[_t+2*C];
+            __syncthreads();
+
+            #pragma unroll
+            for (int j = 0; j < N; j++){
+                float x = vv[j] * kk;
+                saaaa[j] = ww * (saaaa[j] + sbbbb[j] + x);
+                sbbbb[j] = ww * (sbbbb[j] + x);
+                atomicAdd(gw+i, rr_value * wwwww * saaaa[j] * gyy[j]);
+            }
+
+            __syncthreads();
+        }
     }
 
-    for (int t = 0; t < T; t++) {
-        const int index1 = b*T*H*N + t*H*N + h*N;
-        const F* v1 = v + index1;
-        const F* k1 = k + index1;
-        const F* r1 = r + index1;
-        const F* gy1 = gy + index1;
-        F* gr1 = gr + index1;
-        F* gk1 = gk + index1;
-        F* gv1 = gv + index1;
+    #pragma unroll
+    for (int j = 0; j < N; ++j)
+        state[j * N + i] = 0;
+    
+    for (int _t = (b+1)*T*C + h*N + i - C, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
+    {
+        const F rr = r[_t];
+        F gkk = 0;
 
-        for (int nn = 0; nn < N; nn++) {
-            for (int tt = 0; tt <= t; tt++) {
-                F w_pow_1 = t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w1, t-tt-1);
-                F ww = (tt == t) ? u1 : w_pow_1;
-                
-                gr1[n] += ww * k[b*T*H*N + tt*H*N + h*N + n] *
-                    v[b*T*H*N + tt*H*N + h*N + nn] * gy1[nn];
-            }
+        vv[i] = v[_t];
+        gyy[i] = gy[_t];
 
-            for (int tt = t; tt < T; tt++) {
-                F w_pow_1 = tt-t-1 >= 0 ? w_pow[tt-t-1] : pow(w1, tt-t-1);
-                F ww = (tt == t) ? u1 : w_pow_1;
-                
-                gk1[n] += r[b*T*H*N + tt*H*N + h*N + n] * ww *
-                    v1[nn] * gy[b*T*H*N + tt*H*N + h*N + nn];
+        __syncthreads();
 
-                ww = (tt == t) ? _u[h*N + nn] : pow(w[h*N + nn], tt-t-1);
-                
-                gv1[n] += r[b*T*H*N + tt*H*N + h*N + nn] * ww *
-                    k1[nn] * gy[b*T*H*N + tt*H*N + h*N + n];
-            }
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
 
-            atomicAdd(gu + h*N + n, r1[n] * k1[n] *
-                    v1[nn] * gy1[nn]);
+            float x = gyy[j] * rr;
+            float s = state[j * N + i];
 
-            for (int tt = 0; tt < t-1; tt++) {
-                F w_pow_1 = t-tt-1 >= 0 ? w_pow[t-tt-1] : pow(w1, t-tt-1);
-                F ww = (t-tt-1) * wwww1 * w_pow_1;
-
-                atomicAdd(gw + h*N + n, r1[n] * ww * k[b*T*H*N + tt*H*N + h*N + n] *
-                    v[b*T*H*N + tt*H*N + h*N + nn] * gy1[nn]);
-            }
+            gkk += vv[j] * (uu * x + s);
+            state[j * N + i] = s * ww + x;
         }
+        gk[_t] = gkk;
+        __syncthreads();
+    }
+
+    #pragma unroll
+    for (int j = 0; j < N; ++j)
+        state[j * N + i] = 0;
+
+    for (int _t = (b+1)*T*C + h*N + i - C, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
+    {
+        const F gy_value = gy[_t];
+        F gvv = 0;
+
+        kk[i] = k[_t];
+        rr[i] = r[_t];
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
+
+            float x = gy_value * rr[j];
+            float s = state[j * N + i];
+
+            gvv += kk[j] * (u[j] * x + s);
+            state[j * N + i] = s * w[j] + x;
+        }
+        gv[_t] = gvv;
+        __syncthreads();
     }
 }
 
@@ -113,8 +177,6 @@ void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, floa
 
 void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *ww, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
 {
-    dim3 threadsPerBlock( min(B*C, 32) );
-    assert(B * C % threadsPerBlock.x == 0);
-    dim3 numBlocks(B * C / threadsPerBlock.x);
-    kernel_backward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, ww, u, gy, gr, gk, gv, gw, gu);
+    assert(H*N == C);
+    kernel_backward<<<dim3(B * H), dim3(N)>>>(B, T, C, H, r, k, v, w, ww, u, gy, gr, gk, gv, gw, gu);
 }

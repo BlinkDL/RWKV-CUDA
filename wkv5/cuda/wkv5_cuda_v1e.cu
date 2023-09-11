@@ -69,11 +69,131 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
 }
 
 template <typename F>
-__global__ void kernel_backward(const int B, const int T, const int C, const int H,
-                                const F *__restrict__ const _r, const F *__restrict__ const _k, const F *__restrict__ const _v, const F *__restrict__ const _w, const F *__restrict__ const _u, const F *__restrict__ const _gy,
-                                F *__restrict__ const _gr, F *__restrict__ const _gk, F *__restrict__ const _gv, F *__restrict__ const _gw, F *__restrict__ const _gu)
+__global__ void kernel_backward (const int B, const int T, const int C, const int H,
+    const F *__restrict__ const r, const F *__restrict__ const k, const F *__restrict__ const v, const F *__restrict__ w, const F *__restrict__ wwww, const F *__restrict__ u, const F *__restrict__ const gy,
+    F *__restrict__ const gr, F *__restrict__ const gk, F *__restrict__ const gv, F *__restrict__ gw, F *__restrict__ gu)
 {
+    const int b = blockIdx.x / H;
+    const int h = blockIdx.x % H;
+    const int i = threadIdx.x;
+    w += h*N;
+    u += h*N;
+    gu += h*N;
+    gw += h*N;
+    wwww += h*N;
+
+    __shared__ float state[N * N], vv[N], rr[N], kk[N], gyy[N];
+
+    #pragma unroll
+    for (int j = 0; j < N; ++j){
+        state[j * N + i] = 0;
+    }
     
+    const float ww = w[i];
+    const float uu = u[i];
+    const float wwwww = wwww[i];
+    float saaaa[N] = {0.0f}, sbbbb[N] = {0.0f};
+
+    for (int _t = b*T*C + h*N + i, _tend = (b+1)*T*C + h*N + i; _t < _tend; _t += C)
+    {
+        const F kk = k[_t];
+        const F rr = r[_t];
+        F grr = 0;
+        F guu = 0;
+
+        vv[i] = v[_t];
+        gyy[i] = gy[_t];
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
+
+            float x = vv[j] * kk;
+            float s = state[j * N + i];
+
+            grr += gyy[j] * (uu * x + s);
+            state[j * N + i] = s * ww + x;
+            guu += rr * x * gyy[j];
+
+        }
+        gr[_t] = grr;
+        atomicAdd(gu + i, guu);
+
+        __syncthreads();
+        if (_t < _tend - 2 * C){
+            const F rr_value = r[_t+2*C];
+            gyy[i] = gy[_t+2*C];
+            __syncthreads();
+
+            #pragma unroll
+            for (int j = 0; j < N; j++){
+                float x = vv[j] * kk;
+                saaaa[j] = ww * (saaaa[j] + sbbbb[j] + x);
+                sbbbb[j] = ww * (sbbbb[j] + x);
+                atomicAdd(gw+i, rr_value * wwwww * saaaa[j] * gyy[j]);
+            }
+
+            __syncthreads();
+        }
+    }
+
+    #pragma unroll
+    for (int j = 0; j < N; ++j)
+        state[j * N + i] = 0;
+    
+    for (int _t = (b+1)*T*C + h*N + i - C, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
+    {
+        const F rr = r[_t];
+        F gkk = 0;
+
+        vv[i] = v[_t];
+        gyy[i] = gy[_t];
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
+
+            float x = gyy[j] * rr;
+            float s = state[j * N + i];
+
+            gkk += vv[j] * (uu * x + s);
+            state[j * N + i] = s * ww + x;
+        }
+        gk[_t] = gkk;
+        __syncthreads();
+    }
+
+    #pragma unroll
+    for (int j = 0; j < N; ++j)
+        state[j * N + i] = 0;
+
+    for (int _t = (b+1)*T*C + h*N + i - C, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
+    {
+        const F gy_value = gy[_t];
+        F gvv = 0;
+
+        kk[i] = k[_t];
+        rr[i] = r[_t];
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int j = 0; j < N; j++)
+        {
+
+            float x = gy_value * rr[j];
+            float s = state[j * N + i];
+
+            gvv += kk[j] * (u[j] * x + s);
+            state[j * N + i] = s * w[j] + x;
+        }
+        gv[_t] = gvv;
+        __syncthreads();
+    }
 }
 
 void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *y)
@@ -82,12 +202,8 @@ void cuda_forward(int B, int T, int C, int H, float *r, float *k, float *v, floa
     kernel_forward<<<dim3(B * H), dim3(N)>>>(B, T, C, H, r, k, v, w, u, y);
 }
 
-void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
+void cuda_backward(int B, int T, int C, int H, float *r, float *k, float *v, float *w, float *ww, float *u, float *gy, float *gr, float *gk, float *gv, float *gw, float *gu)
 {
     assert(H*N == C);
-    const int SIZE = B*C;
-    dim3 threadsPerBlock(min(SIZE, 32));
-    assert(SIZE % threadsPerBlock.x == 0);
-    dim3 numBlocks(SIZE / threadsPerBlock.x);
-    kernel_backward<<<numBlocks, threadsPerBlock>>>(B, T, C, H, r, k, v, w, u, gy, gr, gk, gv, gw, gu);
+    kernel_backward<<<dim3(B * H), dim3(N)>>>(B, T, C, H, r, k, v, w, ww, u, gy, gr, gk, gv, gw, gu);
 }
