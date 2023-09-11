@@ -93,7 +93,7 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     for (int j = 0; j < N; ++j)
         state[j * N + i] = 0;
     
-    for (int _t = (b+1)*T*C + h*N + i - N, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
+    for (int _t = (b+1)*T*C + h*N + i - C, _tend = b*T*C + h*N + i; _t >= _tend; _t -= C)
     {
         const F rr = r[_t];
         F gkk = 0;
