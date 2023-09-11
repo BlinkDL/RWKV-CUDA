@@ -195,7 +195,16 @@ def CHECK_BACKWARD():
     ww = w.unsqueeze(1).repeat(1, HEAD_SIZE)
     uu = u.unsqueeze(1).repeat(1, HEAD_SIZE)
 
-    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w.float())), u)
+    # for i in range(5): # warmup - will freeze at i=3 ?
+    #     print('warmup', i)
+    #     y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w.float())), u)
+    #     LOSS(y0).backward()
+    #     r.grad.data.zero_()
+    #     k.grad.data.zero_()
+    #     v.grad.data.zero_()
+    #     w.grad.data.zero_()
+    #     u.grad.data.zero_()
+
     with torch.autograd.profiler.profile(use_cuda=True) as prof:
         y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w.float())), u)
     print('Torch forward\n', prof.key_averages(group_by_stack_n=5).table(sort_by='self_cuda_time_total', row_limit=2))
