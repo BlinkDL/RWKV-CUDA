@@ -43,42 +43,46 @@ wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_{CUDA
 class WKV_5(torch.autograd.Function):
     @staticmethod
     def forward(ctx, B, T, C, H, r, k, v, w, u):
-        assert HEAD_SIZE == C // H
-        assert r.dtype == torch.bfloat16
-        assert k.dtype == torch.bfloat16
-        assert v.dtype == torch.bfloat16
-        assert w.dtype == torch.bfloat16
-        assert u.dtype == torch.bfloat16
-        ctx.B = B
-        ctx.T = T
-        ctx.C = C
-        ctx.H = H
-        r = r.contiguous()
-        k = k.contiguous()
-        v = v.contiguous()
-        w = w.float().contiguous()
-        u = u.contiguous()
-        ew = -torch.exp(w)
-        eew = torch.exp(ew)
-        ctx.save_for_backward(r, k, v, eew, ew, u)
-        y = torch.zeros((B, T, C), device='cuda', dtype=torch.bfloat16).contiguous()
+        with torch.no_grad():
+            assert HEAD_SIZE == C // H
+            assert r.dtype == torch.bfloat16
+            assert k.dtype == torch.bfloat16
+            assert v.dtype == torch.bfloat16
+            assert w.dtype == torch.bfloat16
+            assert u.dtype == torch.bfloat16
+            ctx.B = B
+            ctx.T = T
+            ctx.C = C
+            ctx.H = H
+            r = r.contiguous()
+            k = k.contiguous()
+            v = v.contiguous()
+            w = w.float().contiguous()
+            u = u.contiguous()
+            ew = -torch.exp(w)
+            eew = torch.exp(ew)
+            ctx.save_for_backward(r, k, v, eew, ew, u)
+        y = torch.empty((B, T, C), device=w.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
         wkv_cuda.forward(B, T, C, H, r, k, v, eew, u, y)
         return y
 
     @staticmethod
     def backward(ctx, gy):
-        B = ctx.B
-        T = ctx.T
-        C = ctx.C
-        H = ctx.H
-        gy = gy.contiguous()
-        assert gy.dtype == torch.bfloat16
-        r, k, v, eew, ew, u = ctx.saved_tensors
-        gr = torch.zeros((B, T, C), device='cuda', requires_grad=False, dtype=torch.bfloat16).contiguous()
-        gk = torch.zeros((B, T, C), device='cuda', requires_grad=False, dtype=torch.bfloat16).contiguous()
-        gv = torch.zeros((B, T, C), device='cuda', requires_grad=False, dtype=torch.bfloat16).contiguous()
-        gw = torch.zeros((H, C//H), device='cuda', requires_grad=False, dtype=torch.float).contiguous()
-        gu = torch.zeros((H, C//H), device='cuda', requires_grad=False, dtype=torch.float).contiguous()
+        with torch.no_grad():
+            B = ctx.B
+            T = ctx.T
+            C = ctx.C
+            H = ctx.H
+            gy = gy.contiguous()
+            assert gy.dtype == torch.bfloat16
+            r, k, v, eew, ew, u = ctx.saved_tensors
+            gr = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
+            gk = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
+            gv = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
+            gw = torch.empty((H, C//H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)
+            gu = torch.empty((H, C//H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)
+            gw.zero_()
+            gu.zero_()
         wkv_cuda.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
         return (None, None, None, None, gr, gk, gv, gw.bfloat16(), gu.bfloat16())
 
@@ -155,7 +159,7 @@ def CHECK_BACKWARD():
         r = torch.zeros(B, T, C, device=DEVICE).uniform_(-1, 1).to(dtype=DTYPE).float()
         k = torch.zeros(B, T, C, device=DEVICE).uniform_(-1, 1).to(dtype=DTYPE).float()
         v = torch.zeros(B, T, C, device=DEVICE).uniform_(-1, 1).to(dtype=DTYPE).float()
-        w = torch.zeros(H, device=DEVICE).uniform_(-1, 1).to(dtype=DTYPE).float()
+        w = torch.zeros(H, device=DEVICE).uniform_(-8, 1).to(dtype=DTYPE).float()
         u = torch.zeros(H, device=DEVICE).uniform_(-1, 1).to(dtype=DTYPE).float()
     r.requires_grad_()
     k.requires_grad_()
