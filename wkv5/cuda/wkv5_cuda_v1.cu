@@ -41,8 +41,8 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
 
 template <typename F>
 __global__ void kernel_backward (const int B, const int T, const int C, const int H,
-    const F *__restrict__ const r, const F *__restrict__ const k, const F *__restrict__ const v, const F *__restrict__ w, const F *__restrict__ const wwww, const F *__restrict__ u, const F *__restrict__ const gy,
-    F *__restrict__ const gr, F *__restrict__ const gk, F *__restrict__ const gv, F *__restrict__ const gw, F *__restrict__ gu)
+    const F *__restrict__ const r, const F *__restrict__ const k, const F *__restrict__ const v, const F *__restrict__ w, const F *__restrict__ wwww, const F *__restrict__ u, const F *__restrict__ const gy,
+    F *__restrict__ const gr, F *__restrict__ const gk, F *__restrict__ const gv, F *__restrict__ gw, F *__restrict__ gu)
 {
     const int b = blockIdx.x / H;
     const int h = blockIdx.x % H;
@@ -50,15 +50,20 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
     w += h*N;
     u += h*N;
     gu += h*N;
+    gw += h*N;
+    wwww += h*N;
 
     __shared__ float state[N * N], vv[N], gyy[N];
 
     #pragma unroll
-    for (int j = 0; j < N; ++j)
+    for (int j = 0; j < N; ++j){
         state[j * N + i] = 0;
+    }
     
     const float ww = w[i];
     const float uu = u[i];
+    const float wwwww = wwww[i];
+    float saaaa[N] = {0.0f}, sbbbb[N] = {0.0f};
 
     for (int _t = b*T*C + h*N + i, _tend = (b+1)*T*C + h*N + i; _t < _tend; _t += C)
     {
@@ -82,11 +87,27 @@ __global__ void kernel_backward (const int B, const int T, const int C, const in
             grr += gyy[j] * (uu * x + s);
             state[j * N + i] = s * ww + x;
             guu += rr * x * gyy[j];
+
         }
         gr[_t] = grr;
         atomicAdd(gu + i, guu);
 
         __syncthreads();
+        if (_t < _tend - 2 * C){
+            const F rr_value = r[_t+2*C];
+            gyy[i] = gy[_t+2*C];
+            __syncthreads();
+
+            #pragma unroll
+            for (int j = 0; j < N; j++){
+                float x = vv[j] * kk;
+                saaaa[j] = ww * (saaaa[j] + sbbbb[j] + x);
+                sbbbb[j] = ww * (sbbbb[j] + x);
+                atomicAdd(gw+i, rr_value * wwwww * saaaa[j] * gyy[j]);
+            }
+
+            __syncthreads();
+        }
     }
 
     #pragma unroll
