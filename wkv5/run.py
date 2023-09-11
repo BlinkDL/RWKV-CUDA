@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '1'
+CUDA_KERNEL_VERSION = '1e'
 
 '''
 cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
