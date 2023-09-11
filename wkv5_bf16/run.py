@@ -37,7 +37,7 @@ def val(x):
 # CUDA Kernel
 ########################################################################################################
 
-wkv_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_{CUDA_KERNEL_VERSION}.cu"],
+wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_{CUDA_KERNEL_VERSION}.cu"],
                 verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"])
     
 class WKV_5(torch.autograd.Function):
@@ -63,7 +63,7 @@ class WKV_5(torch.autograd.Function):
             eew = torch.exp(ew)
             ctx.save_for_backward(r, k, v, eew, ew, u)
         y = torch.empty((B, T, C), device=w.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
-        wkv_cuda.forward(B, T, C, H, r, k, v, eew, u, y)
+        wkv5_cuda.forward(B, T, C, H, r, k, v, eew, u, y)
         return y
 
     @staticmethod
@@ -79,15 +79,15 @@ class WKV_5(torch.autograd.Function):
             gr = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
             gk = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
             gv = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)
-            gw = torch.empty((H, C//H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)
-            gu = torch.empty((H, C//H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)
-            gw.zero_()
-            gu.zero_()
-        wkv_cuda.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
+            gw = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)
+            gu = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)
+        wkv5_cuda.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
+        gw = torch.sum(gw.view(B*T, H, C//H), 0)
+        gu = torch.sum(gu.view(B*T, H, C//H), 0)
         return (None, None, None, None, gr, gk, gv, gw.bfloat16(), gu.bfloat16())
 
 def RUN_CUDA(B, T, C, H, r, k, v, w, u):
-    return WKV_5.apply(B, T, C, H, r.cuda(), k.cuda(), v.cuda(), w.cuda(), u.cuda())
+    return WKV_5.apply(B, T, C, H, r, k, v, w, u)
 
 ######################################################################################################
 # Original pytorch version (requires w & u to be constant within each head)
