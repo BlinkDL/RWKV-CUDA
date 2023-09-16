@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '1'
+CUDA_KERNEL_VERSION = '1d'
 
 '''
 cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
@@ -86,28 +86,28 @@ def RUN_FORMULA_1A(B, T, C, H, r, k, v, w, u):
 
     return out.view(B, T, C)
 
-def RUN_FORMULA_1B(B, T, C, H, r, k, v, w, u):
-    N = C // H
-    r = r.view(B, T, H, N)
-    k = k.view(B, T, H, N)
-    v = v.view(B, T, H, N)
-    w = w.view(H, N)
-    u = u.view(H, N)
-    out = torch.zeros((B, T, H, N), device=DEVICE)
+# def RUN_FORMULA_1B(B, T, C, H, r, k, v, w, u): # this is O(T^2) - not good
+#     N = C // H
+#     r = r.view(B, T, H, N)
+#     k = k.view(B, T, H, N)
+#     v = v.view(B, T, H, N)
+#     w = w.view(H, N)
+#     u = u.view(H, N)
+#     out = torch.zeros((B, T, H, N), device=DEVICE)
 
-    for b in range(B):
-        for h in range(H):
-            for t in range(T):
-                coupling = torch.zeros(T, device=DEVICE).contiguous()
-                for tt in range(t+1):
-                    for j in range(N):
-                        ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
-                        coupling[tt] += r[b,t,h,j] * ww * k[b,tt,h,j]
-                for tt in range(t+1):
-                    for i in range(N):
-                        out[b,t,h,i] += coupling[tt] * v[b,tt,h,i]
+#     for b in range(B):
+#         for h in range(H):
+#             for t in range(T):
+#                 coupling = torch.zeros(T, device=DEVICE).contiguous()
+#                 for tt in range(t+1):
+#                     for j in range(N):
+#                         ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
+#                         coupling[tt] += r[b,t,h,j] * ww * k[b,tt,h,j]
+#                 for tt in range(t+1):
+#                     for i in range(N):
+#                         out[b,t,h,i] += coupling[tt] * v[b,tt,h,i]
 
-    return out.view(B, T, C)
+#     return out.view(B, T, C)
 
 def RUN_FORMULA_2(B, T, C, H, r, k, v, w, u):
     N = C // H
@@ -534,7 +534,7 @@ def CHECK_CORRECT():
         y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
         print(f'result\n{val(y0)}\n')
 
-        y1 = RUN_FORMULA_1B(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
+        y1 = RUN_FORMULA_1A(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
         print(f'result\n{val(y1)}\n')
 
         y2 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
