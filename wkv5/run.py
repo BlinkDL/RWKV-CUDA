@@ -12,7 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = '1e'
+CUDA_KERNEL_VERSION = '1'
 
 '''
 cd /fsx/BlinkDL/CODE/_PUBLIC_/RWKV-CUDA/wkv5
@@ -83,6 +83,29 @@ def RUN_FORMULA_1A(B, T, C, H, r, k, v, w, u):
                         s = state[i,j]
                         out[b,t,h,i] += r[b,t,h,j] * (u[h,j] * x + s)
                         state[i,j] = s * w[h,j] + x
+
+    return out.view(B, T, C)
+
+def RUN_FORMULA_1B(B, T, C, H, r, k, v, w, u):
+    N = C // H
+    r = r.view(B, T, H, N)
+    k = k.view(B, T, H, N)
+    v = v.view(B, T, H, N)
+    w = w.view(H, N)
+    u = u.view(H, N)
+    out = torch.zeros((B, T, H, N), device=DEVICE)
+
+    for b in range(B):
+        for h in range(H):
+            for t in range(T):
+                    coupling = torch.zeros(T, device=DEVICE).contiguous()
+                    for tt in range(t+1):
+                        for j in range(N):
+                            ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
+                            coupling[tt] += r[b,t,h,j] * ww * k[b,tt,h,j]
+                    for tt in range(t+1):
+                        for i in range(N):
+                            out[b,t,h,i] += coupling[tt] * v[b,tt,h,i]
 
     return out.view(B, T, C)
 
@@ -343,10 +366,10 @@ if JOB == 'correctness':
     HEAD_SIZE = 2
 
 elif JOB == 'backward':
-    B = 2
+    B = 3
     T = 5
-    C = 4
-    HEAD_SIZE = 2
+    C = 8
+    HEAD_SIZE = 4
 
     # B = 1
     # T = 5
@@ -354,9 +377,9 @@ elif JOB == 'backward':
     # HEAD_SIZE = 1
 
 elif JOB == 'backward_more':
-    B = 2
-    T = 128
-    C = 128
+    B = 9
+    T = 4096
+    C = 4096
     HEAD_SIZE = 64
 
 elif JOB == 'correctness_more':
@@ -511,7 +534,7 @@ def CHECK_CORRECT():
         y0 = RUN_FORMULA_1(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
         print(f'result\n{val(y0)}\n')
 
-        y1 = RUN_FORMULA_2(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
+        y1 = RUN_FORMULA_1B(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
         print(f'result\n{val(y1)}\n')
 
         y2 = RUN_CUDA(B, T, C, H, r, k, v, w, u)
@@ -520,7 +543,7 @@ def CHECK_CORRECT():
         print('--> correct =', torch.allclose(y0, y1), torch.allclose(y0, y2),
             ', err ratio =', get_err_ratio(y0, y1), get_err_ratio(y0, y2))
 
-        
+
         if JOB == 'backward':
 
             def LOSS(y): # a strange loss for better verification
@@ -602,19 +625,35 @@ def CHECK_BACKWARD():
         u = torch.zeros(H, requires_grad=True, device=DEVICE).uniform_(-1, 1)    
     
     print(f'B={B} T={T} C={C} HEAD_SIZE={HEAD_SIZE}')
-    
+    assert T % 512 == 0
     print('[original torch (const w & u within a head)] vs [current cuda]')
-    rwkv5_torch = RUN_TORCH(chunk_len = T)
+    rwkv5_torch = RUN_TORCH(chunk_len = 512)
+
     y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
-    
+    y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
+    print('Torch forward\n', prof.key_averages(group_by_stack_n=5).table(
+        sort_by='self_cuda_time_total', row_limit=5))
+        
     ww = w.repeat_interleave(HEAD_SIZE)
     uu = u.repeat_interleave(HEAD_SIZE)
+
     y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        y1 = RUN_CUDA(B, T, C, H, r, k, v, ww, uu)
+    print('CUDA forward\n', prof.key_averages(group_by_stack_n=5).table(
+        sort_by='self_cuda_time_total', row_limit=5))
     
     print('--> correct =', torch.allclose(y0, y1),
         ', err ratio =', get_err_ratio(y0, y1))
 
-    LOSS(y0).backward()
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        LOSS(y0).backward()
+    print('Torch backward\n', prof.key_averages(group_by_stack_n=5).table(
+        sort_by='self_cuda_time_total', row_limit=5))
+            
     gr0 = r.grad.data.clone()
     gk0 = k.grad.data.clone()
     gv0 = v.grad.data.clone()
@@ -625,7 +664,11 @@ def CHECK_BACKWARD():
     v.grad.data.zero_()
     w.grad.data.zero_()
     u.grad.data.zero_()
-    LOSS(y1).backward()
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        LOSS(y1).backward()
+    print('CUDA backward\n', prof.key_averages(group_by_stack_n=5).table(
+        sort_by='self_cuda_time_total', row_limit=5))
+        
     gr1 = r.grad.data.clone()
     gk1 = k.grad.data.clone()
     gv1 = v.grad.data.clone()
@@ -656,10 +699,11 @@ def CHECK_TORCH():
     # print(f'w\n{val(w)}\n')
     # print(f'u\n{val(u)}\n')
 
-    assert T == 4096
+    TT = 256
+    assert T % TT == 0
     print(f'B={B} T={T} C={C} HEAD_SIZE={HEAD_SIZE}')
-    
-    rwkv5_torch = RUN_TORCH(chunk_len = 512)
+
+    rwkv5_torch = RUN_TORCH(chunk_len = TT)
 
     y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
     y0 = rwkv5_torch.forward(B, T, C, H, r, k, v, torch.exp(-torch.exp(w)), u)
