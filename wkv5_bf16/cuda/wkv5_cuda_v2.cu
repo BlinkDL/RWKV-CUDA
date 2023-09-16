@@ -27,6 +27,9 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
     F *__restrict__ const y = _y;
 
     __align__(16) float4 state[_N_ >> 2] = { make_float4(0.0f, 0.0f, 0.0f, 0.0f) };
+    for ( int  i =0 ;i < _N_ >> 2; i++){
+        state[i] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
     __shared__ Pack8X<F> rr[_N_ >> 3], kk[_N_ >> 3];
 
     for (int _tt = b*T*C + h*_N_ + i, _tend = (b+1)*T*C + h*_N_ + i; _tt < _tend; _tt += C)
@@ -43,42 +46,43 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
         #pragma unroll
         for (int j = 0; j < _N_ >> 3; j++)
         {
-            const float4 ww = w[j*2];
             const Pack8X<F> uu = u[j];
             const Pack8X<F> rrr = rr[j];
             const Pack8X<F> kkk = kk[j];
 
-            Pack8X<F> x;
-            x.x = float(kkk.x) * vv;
-            x.y = float(kkk.y) * vv;
-            x.z = float(kkk.z) * vv;
-            x.w = float(kkk.w) * vv;
-            x.a = float(kkk.a) * vv;
-            x.b = float(kkk.b) * vv;
-            x.c = float(kkk.c) * vv;
-            x.d = float(kkk.d) * vv;
+            float4 x1;
+            x1.x = float(kkk.x) * vv;
+            x1.y = float(kkk.y) * vv;
+            x1.z = float(kkk.z) * vv;
+            x1.w = float(kkk.w) * vv;
+            float4 &s1 = state[j<<1];
+            const float4 ww1 = w[j<<1];
 
-            float4 &s = state[j*2];
+            yy += float(rrr.x) * (float(uu.x) * x1.x + s1.x);
+            yy += float(rrr.y) * (float(uu.y) * x1.y + s1.y);
+            yy += float(rrr.z) * (float(uu.z) * x1.z + s1.z);
+            yy += float(rrr.w) * (float(uu.w) * x1.w + s1.w);
+            s1.x = s1.x * ww1.x + x1.x;
+            s1.y = s1.y * ww1.y + x1.y;
+            s1.z = s1.z * ww1.z + x1.z;
+            s1.w = s1.w * ww1.w + x1.w;
 
-            yy += float(rrr.x) * (float(uu.x) * float(x.x) + s.x) 
-                    + float(rrr.y) * (float(uu.y) * float(x.y) + s.y) 
-                    + float(rrr.z) * (float(uu.z) * float(x.z) + s.z) 
-                    + float(rrr.w) * (float(uu.w) * float(x.w) + s.w);
-            s.x = s.x * ww.x + float(x.x);
-            s.y = s.y * ww.y + float(x.y);
-            s.z = s.z * ww.z + float(x.z);
-            s.w = s.w * ww.w + float(x.w);
-
-            const float4 ww2 = w[j*2+1];
-            float4 &s2 = state[j*2+1];
-            yy += float(rrr.a) * (float(uu.a) * float(x.a) + s2.x) 
-                    + float(rrr.b) * (float(uu.b) * float(x.b) + s2.y) 
-                    + float(rrr.c) * (float(uu.c) * float(x.c) + s2.z) 
-                    + float(rrr.d) * (float(uu.d) * float(x.d) + s2.w);
-            s2.x = s2.x * ww2.x + float(x.a);
-            s2.y = s2.y * ww2.y + float(x.b);
-            s2.z = s2.z * ww2.z + float(x.c);
-            s2.w = s2.w * ww2.w + float(x.d);
+            float4 x2;
+            x2.x = float(kkk.a) * vv;
+            x2.y = float(kkk.b) * vv;
+            x2.z = float(kkk.c) * vv;
+            x2.w = float(kkk.d) * vv;
+            float4 &s2 = state[j<<1|1];
+            const float4 ww2 = w[j<<1|1];
+            
+            yy += float(rrr.a) * (float(uu.a) * x2.x + s2.x);
+            yy += float(rrr.b) * (float(uu.b) * x2.y + s2.y);
+            yy += float(rrr.c) * (float(uu.c) * x2.z + s2.z);
+            yy += float(rrr.d) * (float(uu.d) * x2.w + s2.w);
+            s2.x = s2.x * ww2.x + x2.x;
+            s2.y = s2.y * ww2.y + x2.y;
+            s2.z = s2.z * ww2.z + x2.z;
+            s2.w = s2.w * ww2.w + x2.w;
         }
         y[_tt] = F(yy);
     }
