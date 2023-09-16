@@ -98,14 +98,14 @@ def RUN_FORMULA_1B(B, T, C, H, r, k, v, w, u):
     for b in range(B):
         for h in range(H):
             for t in range(T):
-                    coupling = torch.zeros(T, device=DEVICE).contiguous()
-                    for tt in range(t+1):
-                        for j in range(N):
-                            ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
-                            coupling[tt] += r[b,t,h,j] * ww * k[b,tt,h,j]
-                    for tt in range(t+1):
-                        for i in range(N):
-                            out[b,t,h,i] += coupling[tt] * v[b,tt,h,i]
+                coupling = torch.zeros(T, device=DEVICE).contiguous()
+                for tt in range(t+1):
+                    for j in range(N):
+                        ww = u[h,j] if (tt == t) else w[h,j] ** (t - tt - 1)
+                        coupling[tt] += r[b,t,h,j] * ww * k[b,tt,h,j]
+                for tt in range(t+1):
+                    for i in range(N):
+                        out[b,t,h,i] += coupling[tt] * v[b,tt,h,i]
 
     return out.view(B, T, C)
 
