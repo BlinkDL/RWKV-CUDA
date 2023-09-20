@@ -1,3 +1,5 @@
+import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 import torch
 from torch.utils.cpp_extension import load
 from torch.nn import functional as F
@@ -10,7 +12,6 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 DTYPE = torch.bfloat16
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 DEVICE = 'cuda'
 CUDA_KERNEL_VERSION = 'v1'
 
@@ -79,11 +80,11 @@ class WKV_5(torch.autograd.Function):
             gr = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
             gk = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
             gv = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
-            gw = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
-            gu = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
+            gw = torch.empty((B, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
+            gu = torch.empty((B, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format) # .uniform_(-1, 1)
             wkv5_cuda.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
-            gw = torch.sum(gw.view(B*T, H, C//H), 0)
-            gu = torch.sum(gu.view(B*T, H, C//H), 0)
+            gw = torch.sum(gw.view(B, H, C//H), 0)
+            gu = torch.sum(gu.view(B, H, C//H), 0)
             return (None, None, None, None, gr, gk, gv, gw, gu)
 
 def RUN_CUDA(B, T, C, H, r, k, v, w, u):
