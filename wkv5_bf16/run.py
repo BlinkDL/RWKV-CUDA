@@ -13,7 +13,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 DTYPE = torch.bfloat16
 
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 'v3'
+CUDA_KERNEL_VERSION = 'v2'
 
 B = 8
 T = 4096
@@ -38,7 +38,7 @@ def val(x):
 # CUDA Kernel
 ########################################################################################################
 
-wkv5_cuda = load(name="wkv5", sources=[f"cuda/wkv5_cuda_{CUDA_KERNEL_VERSION}.cu"],
+wkv5_cuda = load(name="wkv5", sources=[f"cuda/wkv5_cuda_{CUDA_KERNEL_VERSION}.cu"] if CUDA_KERNEL_VERSION == 'v3' else ["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_{CUDA_KERNEL_VERSION}.cu"],
                 verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"])
     
 class WKV_5(torch.autograd.Function):
