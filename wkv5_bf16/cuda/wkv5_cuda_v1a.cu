@@ -14,9 +14,12 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
     _w += h*_N_;
     _u += h*_N_;
 
-    __shared__ float r[_N_], k[_N_];
-
+    __shared__ float r[_N_], k[_N_], u[_N_];
     float state[_N_] = {0};
+
+    __syncthreads();
+    u[i] = float(_u[i]);
+    __syncthreads();
 
     for (int _t = b*T*C + h*_N_ + i; _t < (b+1)*T*C + h*_N_ + i; _t += C)
     {
@@ -28,12 +31,13 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
         const float v = float(_v[_t]);
         float y = 0;
 
+        #pragma unroll
         for (int j = 0; j < _N_; j++)
         {
             float x = k[j] * v;
             float& s = state[j];
 
-            y += r[j] * (float(_u[j]) * x + s);
+            y += r[j] * (u[j] * x + s);
             s = s * _w[j] + x;
         }
         _y[_t] = F(y);
@@ -118,7 +122,7 @@ __global__ void kernel_backward(const int B, const int T, const int C, const int
     }
 
     __syncthreads();
-    w_[i] = float(_w[i]);
+    w_[i] = _w[i];
     u_[i] = float(_u[i]);
     __syncthreads();
     
