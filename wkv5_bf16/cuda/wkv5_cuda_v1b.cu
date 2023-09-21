@@ -32,13 +32,29 @@ __global__ void kernel_forward(const int B, const int T, const int C, const int 
         float y = 0;
 
         #pragma unroll
-        for (int j = 0; j < _N_; j++)
+        for (int j = 0; j < _N_; j+=4)
         {
-            float x = k[j] * v;
-            float& s = state[j];
+            const float4& r_ = (float4&)(r[j]);
+            const float4& k_ = (float4&)(k[j]);
+            const float4& w_ = (float4&)(_w[j]);
+            const float4& u_ = (float4&)(u[j]);
+            float4& s = (float4&)(state[j]);
+            float4 x;
 
-            y += r[j] * (u[j] * x + s);
-            s = s * _w[j] + x;
+            x.x = k_.x * v;
+            x.y = k_.y * v;
+            x.z = k_.z * v;
+            x.w = k_.w * v;
+
+            y += r_.x * (u_.x * x.x + s.x);
+            y += r_.y * (u_.y * x.y + s.y);
+            y += r_.z * (u_.z * x.z + s.z);
+            y += r_.w * (u_.w * x.w + s.w);
+
+            s.x = s.x * w_.x + x.x;
+            s.y = s.y * w_.y + x.y;
+            s.z = s.z * w_.z + x.z;
+            s.w = s.w * w_.w + x.w;
         }
         _y[t] = F(y);
     }
