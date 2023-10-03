@@ -13,7 +13,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 DTYPE = torch.bfloat16
 
 DEVICE = 'cuda'
-CUDA_KERNEL_VERSION = 'v2'
+CUDA_KERNEL_VERSION = 'v1b'
 
 B = 8
 T = 4096
