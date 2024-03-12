@@ -130,7 +130,7 @@ def RUN_CUDA(B, T, C, H, r, k, v, w, u, s):
     return WKV_6STATE.apply(B, T, C, H, r, k, v, w, u, s)
 
 ######################################################################################################
-# Original pytorch version (requires w & u to be constant within each head)
+# reference pytorch version (very very slow - otherwise pytorch can't autograd)
 ######################################################################################################
 
 class RUN_TORCH(torch.jit.ScriptModule):
@@ -208,7 +208,7 @@ def CHECK_BACKWARD():
     s.requires_grad_()
 
     print(f'B={B} T={T} C={C} HEAD_SIZE={HEAD_SIZE}')
-    print('[original torch (const w & u within a head)] vs [current cuda]')
+    print('[original torch] vs [current cuda]')
 
     # collect fp32 reference values
 
@@ -217,8 +217,8 @@ def CHECK_BACKWARD():
         ww = w + ((x @ ww1) @ ww2)
         ww.retain_grad()
         y = rwkv_torch.forward(B, T, C, H, r, k, v, ww, u, s)
-    else:
-        y = RUN_CUDA_5(B, T, C, H, r, k, v, w, u)
+    # else:
+    #     y = RUN_CUDA_5(B, T, C, H, r, k, v, w, u)
     
     if CHECK_BWD:
         yy = y.clone().detach().requires_grad_(True)
