@@ -74,7 +74,7 @@ def val(x):
 # CUDA Kernel
 ########################################################################################################
 
-wkv6state_cuda = load(name="wkv6state", sources=["hip/wkv6state_op.cpp", f"hip/wkv6state_hip_{CUDA_KERNEL_VERSION}.hip"],
+wkv6state_cuda = load(name="wkv6state", sources=["cuda/wkv6state_op.cpp", f"cuda/wkv6state_cuda_{CUDA_KERNEL_VERSION}.cuda"],
                 verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", "--hip-link", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
     
 class WKV_6STATE(torch.autograd.Function):
