@@ -78,7 +78,7 @@ run_rocm = True
 
 if run_rocm:
     wkv6state_cuda = load(name="wkv6state", sources=["cuda/wkv6state_op.cpp", f"cuda/wkv6state_cuda_{CUDA_KERNEL_VERSION}.cu"],
-        verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", "--hip-link", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
+        verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
 else:
     wkv6state_cuda = load(name="wkv6state", sources=["cuda/wkv6state_op.cpp", f"cuda/wkv6state_cuda_{CUDA_KERNEL_VERSION}.cu"],
         verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
