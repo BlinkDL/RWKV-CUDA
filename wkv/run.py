@@ -87,7 +87,7 @@ from torch.utils.cpp_extension import load
 run_rocm = False
 
 if run_rocm:
-    wkv_cuda = load(name="wkv", sources=["hip/wkv_op.cpp", f"hip/wkv_hip_v{CUDA_KERNEL_VERSION}.hip"],
+    wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", f"hip/wkv_cuda_v{CUDA_KERNEL_VERSION}.cu"],
         verbose=True, extra_cuda_cflags=["-O3", "-xhip", "--hipstdpar"])
 else:
     wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", f"cuda/wkv_cuda_v{CUDA_KERNEL_VERSION}.cu"],
