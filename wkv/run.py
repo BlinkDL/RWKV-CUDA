@@ -83,8 +83,16 @@ def RUN_PYTORCH(B, T, C, w, u, k, v, time_curve):
 ######################################################################################################
 
 from torch.utils.cpp_extension import load
-wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", f"cuda/wkv_cuda_v{CUDA_KERNEL_VERSION}.cu"],
-                  verbose=True, extra_cuda_cflags=["-O3", "-xhip", "--hipstdpar"])
+
+run_rocm = False
+
+if run_rocm:
+    wkv_cuda = load(name="wkv", sources=["hip/wkv_op.cpp", f"hip/wkv_hip_v{CUDA_KERNEL_VERSION}.hip"],
+        verbose=True, extra_cuda_cflags=["-O3", "-xhip", "--hipstdpar"])
+else:
+    wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", f"cuda/wkv_cuda_v{CUDA_KERNEL_VERSION}.cu"],
+        verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization'])
+
 
 class WKV(torch.autograd.Function):
     @staticmethod

@@ -69,7 +69,7 @@ def val(x):
 run_rocm = True
 
 if run_rocm:
-    wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v1b2.cu"],
+    wkv5_cuda = load(name="wkv5", sources=["hip/wkv5_op.cpp", f"cuda/wkv5_hip_v1b2.hip"],
         verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", f"-D_N_={HEAD_SIZE}"])
 else:
     wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v1b2.cu"],
@@ -129,7 +129,7 @@ def RUN_CUDA_5(B, T, C, H, r, k, v, w, u):
 ########################################################################################################
 
 if run_rocm:
-    wkv6_cuda = load(name="wkv6", sources=["cuda/wkv6_op.cpp", f"cuda/wkv6_cuda_{CUDA_KERNEL_VERSION}.cu"],
+    wkv6_cuda = load(name="wkv6", sources=["hip/wkv6_op.cpp", f"hip/wkv6_hip_{CUDA_KERNEL_VERSION}.hip"],
                 verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
     
 else:
