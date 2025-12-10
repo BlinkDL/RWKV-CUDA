@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import torch
 from torch.utils.cpp_extension import load
 from torch.nn import functional as F
@@ -66,9 +66,15 @@ def get_err_ratio(x, y):
 def val(x):
     return x.detach().float().cpu().numpy()
 
-wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v1b2.cu"],
-                verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"])
-    
+run_rocm = True
+
+if run_rocm:
+    wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v1b2.cu"],
+        verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", f"-D_N_={HEAD_SIZE}"])
+else:
+    wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v1b2.cu"],
+        verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"])
+        
 class WKV_5(torch.autograd.Function):
     @staticmethod
     def forward(ctx, B, T, C, H, r, k, v, w, u):
@@ -122,7 +128,12 @@ def RUN_CUDA_5(B, T, C, H, r, k, v, w, u):
 # CUDA Kernel
 ########################################################################################################
 
-wkv6_cuda = load(name="wkv6", sources=["cuda/wkv6_op.cpp", f"cuda/wkv6_cuda_{CUDA_KERNEL_VERSION}.cu"],
+if run_rocm:
+    wkv6_cuda = load(name="wkv6", sources=["cuda/wkv6_op.cpp", f"cuda/wkv6_cuda_{CUDA_KERNEL_VERSION}.cu"],
+                verbose=True, extra_cuda_cflags=["-O3", "--hipstdpar", "-xhip", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
+    
+else:
+    wkv6_cuda = load(name="wkv6", sources=["cuda/wkv6_op.cpp", f"cuda/wkv6_cuda_{CUDA_KERNEL_VERSION}.cu"],
                 verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
     
 class WKV_6(torch.autograd.Function):
