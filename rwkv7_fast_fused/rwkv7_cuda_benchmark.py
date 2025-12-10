@@ -12,6 +12,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 cd /mnt/program/_RWKV_/_ref_/RWKV-CUDA/rwkv7_fast_fused; python rwkv7_cuda_benchmark.py fp32 0; python rwkv7_cuda_benchmark.py fp32 1
 cd /mnt/program/_RWKV_/_ref_/RWKV-CUDA/rwkv7_fast_fused; python rwkv7_cuda_benchmark.py bf16 0; python rwkv7_cuda_benchmark.py bf16 1
 '''
+print('\n### RWKV7_fused_clamp_w vanilla fwd+bwd kernel ###\n')
 
 DTYPE = torch.float if sys.argv[1].strip()=='fp32' else torch.bfloat16
 BENCHMARK_SPEED = True if int(sys.argv[2].strip()) == 1 else 0
