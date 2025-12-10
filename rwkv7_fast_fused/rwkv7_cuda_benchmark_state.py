@@ -93,7 +93,7 @@ if DTYPE == torch.bfloat16:
             r,w,k,v,a,b,s,sa = ctx.saved_tensors
             B,T,H,N = r.shape
             dr,dw,dk,dv,da,db = [torch.empty_like(x) for x in [r,w,k,v,a,b]]
-            ds0 = torch.empty(B,H,N,N,dtype=torch.bfloat16,device=r.device)
+            ds0 = torch.empty(B,H,N,N,dtype=torch.float32,device=r.device)
             torch.ops.rwkv7_state_clampw.backward(r,w,k,v,a,b,dy,s,sa,ds0,dr,dw,dk,dv,da,db)
             return ds0,dr,dw,dk,dv,da,db
     def RWKV7_STATE_CLAMPW_CUDA(s0,r,w,k,v,a,b):

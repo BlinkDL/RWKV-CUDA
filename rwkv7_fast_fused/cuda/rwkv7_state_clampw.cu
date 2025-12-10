@@ -82,7 +82,7 @@ void cuda_forward(int B,int T,int H,float*s0,bf*r,bf*w,bf*k,bf*v,bf*a,bf*b,bf*y,
 //###################################################################################################### 
 
 template<int N>
-__global__ void backward_kernel(int T, int H, F_ r_, F_ w_, F_ k_, F_ v_, F_ a_, F_ b_, F_ dy_, float * __restrict__ s__, float * __restrict__ sa_, bf* ds0_, bf* dr_, bf* dw_, bf* dk_, bf* dv_, bf* da_, bf* db_)
+__global__ void backward_kernel(int T, int H, F_ r_, F_ w_, F_ k_, F_ v_, F_ a_, F_ b_, F_ dy_, float * __restrict__ s__, float * __restrict__ sa_, float* ds0_, bf* dr_, bf* dw_, bf* dk_, bf* dv_, bf* da_, bf* db_)
 {
     int bb = blockIdx.y, hh = blockIdx.x, i = threadIdx.x;
     float* __restrict__ s_ = s__ + i64(bb*H+hh) * i64((T/_CHUNK_LEN_)*N*N);
@@ -171,11 +171,11 @@ __global__ void backward_kernel(int T, int H, F_ r_, F_ w_, F_ k_, F_ v_, F_ a_,
     }
 #pragma unroll    
     for (int j = 0; j < N; j++) {
-        ds0_[j] = to_bf(dstate[j]);
+        ds0_[j] = dstate[j];
     }
 }
 
-void cuda_backward(int B, int T, int H, bf*r, bf*w, bf*k, bf*v, bf*a, bf*b, bf*dy, float*s, float*sa, bf*ds0, bf*dr, bf*dw, bf*dk, bf*dv, bf*da, bf*db)
+void cuda_backward(int B, int T, int H, bf*r, bf*w, bf*k, bf*v, bf*a, bf*b, bf*dy, float*s, float*sa, float*ds0, bf*dr, bf*dw, bf*dk, bf*dv, bf*da, bf*db)
 {
     assert(T%_CHUNK_LEN_ == 0);
     backward_kernel<_N_><<<dim3(H,B), dim3(_N_)>>>(T,H,r,w,k,v,a,b,dy,s,sa,ds0,dr,dw,dk,dv,da,db);
