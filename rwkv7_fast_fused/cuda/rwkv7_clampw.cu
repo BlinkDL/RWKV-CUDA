@@ -4,6 +4,16 @@
     using bf = float;
     #define to_float(u) (u)
     #define to_bf(u) (u)
+#elif defined(USE_ROCM) || defined(__HIP_PLATFORM_AMD__)
+    // hip_bf16.h is not parseable by the host compiler (g++), so the .cpp wrapper
+    // cannot use __hip_bfloat16. Use c10::BFloat16 (host- and device-usable, and
+    // the type torch itself uses) consistently here and in the wrapper so the two
+    // translation units agree on the cuda_forward/backward signatures. Conversions
+    // are the default round-to-nearest float<->bf16 casts.
+    #include <c10/util/BFloat16.h>
+    using bf = c10::BFloat16;
+    #define to_float(u) (static_cast<float>(u))
+    #define to_bf(u) (static_cast<bf>(u))
 #else
     #include <cuda_bf16.h>
     using bf = __nv_bfloat16;

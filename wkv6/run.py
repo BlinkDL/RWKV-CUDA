@@ -1,10 +1,23 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "7")
 import torch
 from torch.utils.cpp_extension import load
 from torch.nn import functional as F
 import numpy as np
 from math import exp
+
+def hip_aware_cuda_cflags(flags):
+    # On ROCm, hipcc rejects nvcc/PTX-only flags; keep -O3 and the -D defines and
+    # map --use_fast_math to its clang spelling -ffast-math.
+    if torch.version.hip is None:
+        return flags
+    drop = {"-res-usage", "-Xptxas -O3", "--extra-device-vectorization"}
+    out = []
+    for f in flags:
+        if f in drop:
+            continue
+        out.append("-ffast-math" if f == "--use_fast_math" else f)
+    return out
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 # turn off TF32 for higher accuracy
 torch.backends.cudnn.allow_tf32 = False
@@ -67,7 +80,7 @@ def val(x):
     return x.detach().float().cpu().numpy()
 
 wkv5_cuda = load(name="wkv5", sources=["cuda/wkv5_op.cpp", f"cuda/wkv5_cuda_v1b2.cu"],
-                verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"])
+                verbose=True, extra_cuda_cflags=hip_aware_cuda_cflags(["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"]))
     
 class WKV_5(torch.autograd.Function):
     @staticmethod
@@ -123,7 +136,7 @@ def RUN_CUDA_5(B, T, C, H, r, k, v, w, u):
 ########################################################################################################
 
 wkv6_cuda = load(name="wkv6", sources=["cuda/wkv6_op.cpp", f"cuda/wkv6_cuda_{CUDA_KERNEL_VERSION}.cu"],
-                verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"])
+                verbose=True, extra_cuda_cflags=hip_aware_cuda_cflags(["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}", f"-D_T_={T}"]))
     
 class WKV_6(torch.autograd.Function):
     @staticmethod
