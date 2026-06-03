@@ -1,5 +1,12 @@
 #include <assert.h>
 
+// On Windows the hipcc host pass does not predefine __launch_bounds__ unless
+// hip/amd_detail/amd_hip_runtime.h is included. The _FP32_ path includes no
+// HIP headers, so include this early for the host-stub compilation on Windows.
+#if defined(USE_ROCM) || defined(__HIP_PLATFORM_AMD__)
+  #include <hip/amd_detail/amd_hip_runtime.h>
+#endif
+
 #ifdef _FP32_
     using bf = float;
     #define to_float(u) (u)
