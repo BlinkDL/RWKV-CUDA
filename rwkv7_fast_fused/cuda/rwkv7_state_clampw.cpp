@@ -2,6 +2,11 @@
 
 #ifdef _FP32_
     using bf = float;
+#elif defined(USE_ROCM) || defined(__HIP_PLATFORM_AMD__)
+    // hip_bf16.h is not parseable by the host compiler; use c10::BFloat16 to match
+    // the device .cu so both translation units agree on the cuda_forward signature.
+    #include <c10/util/BFloat16.h>
+    using bf = c10::BFloat16;
 #else
     #include <cuda_bf16.h>
     using bf = __nv_bfloat16;

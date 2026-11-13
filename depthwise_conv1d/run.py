@@ -1,8 +1,29 @@
+import sys
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.cpp_extension import load
 import numpy as np
+
+def hip_aware_cuda_cflags(flags):
+    # On ROCm, hipcc rejects nvcc/PTX-only flags; keep -O3 and the -D defines and
+    # map --use_fast_math to its clang spelling -ffast-math.
+    if torch.version.hip is None:
+        return flags
+    drop = {"-res-usage", "-Xptxas -O3", "--extra-device-vectorization"}
+    out = []
+    for f in flags:
+        if f in drop:
+            continue
+        out.append("-ffast-math" if f == "--use_fast_math" else f)
+    return out
+
+def host_cflags(flags):
+    # The /wd... warning suppressions are MSVC-only; drop them off Windows.
+    if sys.platform == "win32":
+        return flags
+    return [f for f in flags if not f.startswith("/wd")]
+
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 torch.backends.cudnn.benchmark = True
 # turn off TF32 for higher accuracy
@@ -69,7 +90,7 @@ B_GROUP_FORWARD = 8
 B_GROUP_BACKWARD = 2
 
 timex_cuda = load(name="timex", sources=["cuda/timex_op.cpp", "cuda/timex_cuda_v" + str(CUDA_KERNEL_VERSION) + ".cu"],
-                  verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}', f'-DBF={B_GROUP_FORWARD}', f'-DBB={B_GROUP_BACKWARD}'], extra_cflags=['/wd4624'])
+                  verbose=True, extra_cuda_cflags=hip_aware_cuda_cflags(['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}', f'-DBF={B_GROUP_FORWARD}', f'-DBB={B_GROUP_BACKWARD}']), extra_cflags=host_cflags(['/wd4624']))
 
 
 # we call it the "TimeX" operator because it's used for time-mixing in my RWKV language model
